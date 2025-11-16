@@ -4,14 +4,20 @@
 #include <QString>
 #include <QVector>
 #include <QUrl>
+#include <QNetworkAccessManager>
+#include <QObject>  // 添加这个
 #include "ConfigManager.h"
 
-class SpeechRecogniser
+class SpeechRecogniser : public QObject  // 继承 QObject
 {
+    Q_OBJECT  // 添加 Q_OBJECT 宏
+
 public:
     explicit SpeechRecogniser(const QString& id,
                               const QString& secret,
-                              const QString& device_id = "BXC9WtrjbrD3BpLck3s6Xqf32GKEEkt4");
+                              const QString& device_id = "BXC9WtrjbrD3BpLck3s6Xqf32GKEEkt4",
+                              QObject* parent = nullptr);  // 添加 parent 参数
+    ~SpeechRecogniser();
 
     void setApiKeys(const QString& id, const QString& secret);
     void setCuid(const QString& device_id);
@@ -38,6 +44,7 @@ private:
 
 private:
     ConfigManager& config;
+    QNetworkAccessManager* networkManager;
 
     QString client_id;
     QString client_secret;

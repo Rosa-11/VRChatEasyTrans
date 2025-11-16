@@ -1,26 +1,28 @@
 #include "speechrecogniser.h"
-#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
-#include <QUrl>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QEventLoop>
 #include <QTimer>
-#include <QCoreApplication>
 #include <QDebug>
-#include <QtEndian>
 #include <cmath>
 
 SpeechRecogniser::SpeechRecogniser(const QString& id,
                                    const QString& secret,
-                                   const QString& device_id)
-    : client_id(id)
+                                   const QString& device_id,
+                                   QObject* parent)
+    : QObject(parent)
+    , config(ConfigManager::instance())
+    , networkManager(new QNetworkAccessManager(this))
+    , client_id(id)
     , client_secret(secret)
     , cuid(device_id)
-    , config(ConfigManager::instance())
-{}
+{
+}
+
+SpeechRecogniser::~SpeechRecogniser(){}
 
 void SpeechRecogniser::setApiKeys(const QString& id, const QString& secret)
 {
@@ -35,7 +37,7 @@ void SpeechRecogniser::setCuid(const QString& device_id)
 
 QString SpeechRecogniser::getAccessToken()
 {
-    // 首先检查config中是否有token
+    // 先检查config中是否有token
     if (!config.baiDuToken.isEmpty()) {
         qDebug() << "Using token from config:" << config.baiDuToken;
         access_token = config.baiDuToken;
@@ -70,7 +72,7 @@ QString SpeechRecogniser::getAccessToken()
 
         // 保存到config中供下次使用
         config.baiDuToken = access_token;
-        //config.saveConfig();
+        // config.saveConfig();                      // TODO
         qDebug() << "Token saved to config";
 
         return access_token;
@@ -83,12 +85,11 @@ QString SpeechRecogniser::getAccessToken()
 
 QString SpeechRecogniser::recognizeSpeech(const QVector<float>& audio_data, int sample_rate, int channels)
 {
-    // 验证音频数据
     if (!validateAudioData(audio_data)) {
         return "Error: Invalid audio data";
     }
 
-    // 获取access token
+    // 获取access token：先在配置缓存中查找，没有的话申请一个并保存
     if (access_token.isEmpty()) {
         access_token = getAccessToken();
     }
@@ -116,7 +117,6 @@ bool SpeechRecogniser::validateAudioData(const QVector<float>& audio_data)
         return false;
     }
 
-    // 检查音频数据范围
     float min_val = std::numeric_limits<float>::max();
     float max_val = std::numeric_limits<float>::lowest();
     float sum = 0.0f;
@@ -135,12 +135,11 @@ bool SpeechRecogniser::validateAudioData(const QVector<float>& audio_data)
     qDebug() << "  Range: min=" << min_val << "max=" << max_val;
     qDebug() << "  Average amplitude:" << average;
 
-    // 检查数据是否在合理范围内（通常float音频数据在-1.0到1.0之间）
     if (max_val > 10.0f || min_val < -10.0f) {
         qDebug() << "Warning: Audio data range seems unusual for normalized audio";
     }
 
-    // 检查是否为静音（平均幅度很小）
+    // 检查是否为静音（平均幅度很小识别错误率指数上涨）
     if (average < 0.001f) {
         qDebug() << "Warning: Audio data appears to be very quiet or silent";
     }
@@ -190,10 +189,8 @@ QVector<int16_t> SpeechRecogniser::convertFloatToInt16(const QVector<float>& aud
 
 QByteArray SpeechRecogniser::audioToBase64(const QVector<float>& audio_data)
 {
-    // 将float音频数据转换为int16_t
     QVector<int16_t> int16_data = convertFloatToInt16(audio_data);
 
-    // 转换为字节数组
     QByteArray byteArray(reinterpret_cast<const char*>(int16_data.constData()),
                          int16_data.size() * sizeof(int16_t));
 
@@ -229,16 +226,19 @@ QByteArray SpeechRecogniser::buildRecognitionRequest(const QVector<float>& audio
 
 QByteArray SpeechRecogniser::httpPost(const QUrl& url, const QByteArray& data, const QString& contentType)
 {
-    QNetworkAccessManager manager;
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0");
+
+    // 连接复用
+    request.setRawHeader("Connection", "Keep-Alive");
+    request.setRawHeader("Keep-Alive", "timeout=30, max=100");
 
     qDebug() << "HTTP POST Request URL:" << url.toString();
     qDebug() << "HTTP POST Content Type:" << contentType;
     qDebug() << "HTTP POST Data Size:" << data.size();
 
-    QNetworkReply* reply = manager.post(request, data);
+    QNetworkReply* reply = networkManager->post(request, data);
 
     QEventLoop loop;
     QTimer timer;
@@ -311,6 +311,7 @@ QString SpeechRecogniser::parseRecognitionResult(const QString& json_result)
 
         if (!result_array.isEmpty()) {
             QString final_result = result_array[0].toString();
+            qDebug() << "Recognition Result:" << final_result;
             return final_result;
         } else {
             qDebug() << "Parse Warning: Empty recognition result array";

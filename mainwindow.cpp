@@ -12,16 +12,13 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , is_running(false)
-    , config(ConfigManager::instance())
-    , capture(nullptr)
-    , recogniser(nullptr)
+    , config(ConfigManager::instance())     // 配置类静态实例引用
     , audioTimer(new QTimer(this))
+    , capture(new AudioCapture(0, this))
+    , translator(new Translator(this))
+
 {
     ui->setupUi(this);
-
-    capture = new AudioCapture(0);
-    capture->setVadThreshold(0.015f);
-    capture->setMinSilenceDuration(800);
 
     connect(audioTimer, &QTimer::timeout, this, &MainWindow::processAudio);
 }
@@ -48,15 +45,21 @@ void MainWindow::processAudio()
     }
 
     if (caped) {
-
-        QString result = recogniser->recognizeSpeech(*(capture->getBuffer()));
+        // 网络IO得到识别文本
+        QString result = recogniser->recognizeSpeech(*(capture->getBuffer()), 16000, 1);
 
         if (result.isEmpty()) {
-            qDebug() << "mainwindow.cpp: empty recogntion result";
+            qDebug() << "mainwindow.cpp: empty Recogntion result";
+            sendToOSC("(...)");
         }
         else {
-            qDebug() << "mainwindow.cpp: result:"<<result;
             sendToOSC(result);
+            QString finaltext = translator->translateText(result, config.targetLanguage);
+            if(finaltext.isEmpty()){
+                qDebug() << "mainwindow.cpp: empty Translation result";
+                finaltext = "(...)";
+            }
+            sendToOSC(result + "\n" + finaltext);
         }
     }
     else {
@@ -71,6 +74,8 @@ void MainWindow::processAudio()
 void MainWindow::on_launchButton_clicked()
 {
     if(is_running){
+        if(recogniser)
+            delete recogniser;
         is_running = false;
         audioTimer->stop();
         ui->launchButton->setText("启动!");
@@ -83,13 +88,7 @@ void MainWindow::on_launchButton_clicked()
 
         // TODO：重新从配置文件加载配置到配置类
 
-        if(recogniser == nullptr)
-            delete recogniser;
-        recogniser = new SpeechRecogniser(
-            config.baiduApiKey,
-            config.baiduSecretKey,
-            config.deviceId
-            );
+        recogniser = new SpeechRecogniser(this);
 
         is_running = true;
         ui->launchButton->setText("停止");

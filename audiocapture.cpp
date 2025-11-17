@@ -1,18 +1,19 @@
 #include "AudioCapture.h"
 #include <QMediaDevices>
 #include <QAudioDevice>
+#include <QObject>
 #include <QDebug>
 #include <QList>
 #include <QFile>
 #include <QScopedPointer>
 #include <cmath>
+#include "ConfigManager.h"
 
-AudioCapture::AudioCapture(int device_index){
-    this->m_vadThreshold = 0.01f;
-    this->m_minSilenceDuration = 800;
-    this->m_sampleRate = 16000;
-
-    this->m_sentenceBuffer.reserve(m_sampleRate * 60);
+AudioCapture::AudioCapture(int device_index, QObject* parent):
+    QObject(parent),
+    config(ConfigManager::instance())
+{
+    this->m_sentenceBuffer.reserve(config.getSampleRate() * 60);
     this->m_shouldStop = false;
 
     QList<QAudioDevice> list = QMediaDevices::audioInputs();
@@ -38,14 +39,9 @@ bool AudioCapture::cap()
     m_shouldStop.store(false);
 
     QAudioFormat format;
-    format.setSampleRate(m_sampleRate);
+    format.setSampleRate(config.getSampleRate());
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
-
-    if (!audioDevice.isFormatSupported(format)) {
-        format = audioDevice.preferredFormat();
-        m_sampleRate = format.sampleRate();
-    }
 
     QScopedPointer<QAudioSource> audioInput(new QAudioSource(audioDevice, format));
     QBuffer buffer;
@@ -107,13 +103,13 @@ bool AudioCapture::cap()
                     totalEnergy += energy;
 
                     if (energy > maxEnergy) maxEnergy = energy;
-                    if (energy > m_vadThreshold) speechSampleCount++;
+                    if (energy > config.getVadThreshold()) speechSampleCount++;
                 }
 
                 float avgEnergy = totalEnergy / sampleCount;
                 float speechRatio = static_cast<float>(speechSampleCount) / sampleCount;
 
-                bool hasSpeech = speechRatio > 0.08f && maxEnergy > m_vadThreshold * 1.5;
+                bool hasSpeech = speechRatio > 0.08f && maxEnergy > config.getVadThreshold() * 1.5;
 
                 if (hasSpeech) {
                     silenceCounter = 0;
@@ -141,15 +137,15 @@ bool AudioCapture::cap()
                     }
 
                     // 每2秒显示进度
-                    if (m_sentenceBuffer.size() % (m_sampleRate * 2) == 0) {
-                        float duration = m_sentenceBuffer.size() / static_cast<float>(m_sampleRate);
+                    if (m_sentenceBuffer.size() % (config.getSampleRate() * 2) == 0) {
+                        float duration = m_sentenceBuffer.size() / static_cast<float>(config.getSampleRate());
                         qDebug() << "Recording..." << QString::number(duration, 'f', 1) << "s, Silence:" << silenceCounter << "ms";
                     }
                 }
 
                 // 检查停止条件
-                if (hasStarted && isSpeaking && silenceCounter >= m_minSilenceDuration) {
-                    float duration = m_sentenceBuffer.size() / static_cast<float>(m_sampleRate);
+                if (hasStarted && isSpeaking && silenceCounter >= config.getMinSilenceDuration()) {
+                    float duration = m_sentenceBuffer.size() / static_cast<float>(config.getSampleRate());
                     qDebug() << "Recording complete:" << QString::number(duration, 'f', 1) << "seconds";
 
                     processTimer.stop();
@@ -162,7 +158,7 @@ bool AudioCapture::cap()
         }
 
         // 保护机制：最长录制30秒
-        if (hasStarted && m_sentenceBuffer.size() > m_sampleRate * 30) {
+        if (hasStarted && m_sentenceBuffer.size() > config.getSampleRate() * 30) {
             qDebug() << "Maximum recording time reached (30s)";
             processTimer.stop();
             audioInput->stop();

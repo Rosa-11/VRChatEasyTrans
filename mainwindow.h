@@ -4,7 +4,8 @@
 #include <QMainWindow>
 #include "ConfigManager.h"
 #include "audiocapture.h"
-#include"speechrecogniser.h"
+#include "speechrecogniser.h"
+#include "translator.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -21,9 +22,11 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
+
     ConfigManager &config;
     AudioCapture *capture;
     SpeechRecogniser *recogniser;
+    Translator *translator;
 
     bool is_running;
     QTimer* audioTimer;

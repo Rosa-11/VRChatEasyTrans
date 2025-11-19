@@ -25,7 +25,7 @@
 
 1. 进入 release 分支
 2. 下载打包好的压缩包并解压，进入软件根目录
-3. 找到VRChatEasyTrans.exe，双击运行
+3. 找到 VRChatEasyTrans-AI.exe，双击运行
 4. 填写你的配置，以及讯飞星火和 Deepseek 的 API 认证信息（下面会讲怎么获取）
 6. 点击启动，这时配置会保存，下次启动无需再次配置
 

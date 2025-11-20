@@ -56,7 +56,7 @@ void MainWindow::processAudio()
         if (result.isEmpty()) {
             // qDebug() << "mainwindow.cpp: empty Recogntion result";
             ui->debug->append("请调整静音阈值以减少杂音，确保讲普通话");
-            sendToOSC("(...)");
+            sendToOSC("喵~✨");
         }
         else {
             sendToOSC(result);
@@ -93,6 +93,14 @@ void MainWindow::on_launchButton_clicked()
         }
     }
     else{
+        if(ui->ApiKeyInput->text().isEmpty() ||
+            ui->AppIdInput->text().isEmpty() ||
+            ui->SecretKeyInput->text().isEmpty() ||
+            ui->DeepseekApiKeyInput->text().isEmpty()
+            ){
+            ui->debug->append("未配置 API 信息，请访问GitHub页面或查看使用说明（辛辛苦苦写的文档怎么没人看QAQ）");
+            return ;
+        }
 
         applyUiToConfig();                  // 将UI修改应用到管理类
 

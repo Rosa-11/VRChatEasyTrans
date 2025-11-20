@@ -50,7 +50,7 @@ bool AudioCapture::cap()
     bool hasStarted = false;
     int silenceCounter = 0;
     int speechCounter = 0;
-    const int speechStartThreshold = 3;
+    const int speechStartThreshold = 1;
     qint64 lastPos = 0;
 
     // qDebug() << "Listening... (Speak now)";

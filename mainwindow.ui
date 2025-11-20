@@ -946,10 +946,46 @@
      </font>
     </property>
     <property name="text">
-     <string>控制台</string>
+     <string>日志信息</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_16">
+    <property name="geometry">
+     <rect>
+      <x>460</x>
+      <y>360</y>
+      <width>501</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>9</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>使用过程中遇到疑问请访问 https://github.com/Rosa-11/VRChatEasyTrans 查看文档</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_17">
+    <property name="geometry">
+     <rect>
+      <x>460</x>
+      <y>380</y>
+      <width>501</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>9</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>若无法解决可以通过文档中提到的邮箱联系开发者</string>
     </property>
    </widget>
    <zorder>deepseekFrame</zorder>
@@ -961,6 +997,8 @@
    <zorder>deepseekFrame_2</zorder>
    <zorder>debug</zorder>
    <zorder>label_15</zorder>
+   <zorder>label_16</zorder>
+   <zorder>label_17</zorder>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

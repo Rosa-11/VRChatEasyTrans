@@ -2,7 +2,7 @@
 🎙️使用方法
 
 1. 程序本体就在 VRChatEasyTrans-Release 文件夹，不需要安装，可以直接把这个文件夹放在合适的位置
-2. 进入 VRChatEasyTrans-Release 文件夹，找到 VRChatEasyTrans.exe，双击运行即可。可以创建快捷方式到桌面方便以后运行双击运行
+2. 进入 VRChatEasyTrans-Release 文件夹，找到 VRChatEasyTrans-AI.exe，双击运行即可。可以创建快捷方式到桌面方便以后运行双击运行
 3. 填写你的配置，以及讯飞星火和 Deepseek 的 API 认证信息（下面会讲怎么获取）
 4. 点击启动，这时配置会保存，下次启动无需再次配置
 

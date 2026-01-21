@@ -23,13 +23,15 @@ public:
     void loadManagerToFile();
 
     // getter方法
+    QAudioDevice getAudioDevice() const { return device; }
+
     QString getXunFeiAppId() const { return xunFeiAppId; }
     QString getXunFeiApiKey() const { return xunFeiApiKey; }
     QString getXunFeiApiSecret() const { return xunFeiApiSecret; }
 
     QString getDeepseekApiKey() const { return DeepseekApiKey; }
 
-    int getAudioDeviceId() const { return audioDeviceId; }
+    QString getAudioDeviceId() const { return audioDeviceId; }
     float getVadThreshold() const { return vadThreshold; }
     int getMinSilenceDuration() const {return minSilenceDuration; }
     int getSampleRate() const { return 16000; }         // 采样率必须是16000，不设置成员变量
@@ -45,7 +47,9 @@ signals:
 private:
 
     // 声音录制设置
-    int audioDeviceId;  // 设备
+    QAudioDevice device;
+    QString audioDeviceId;  // 设备描述（用于记录）
+
     float vadThreshold;        // 0~1
     int minSilenceDuration;    // 单位：ms
 

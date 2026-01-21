@@ -33,7 +33,8 @@ void ConfigManager::loadFileToManager(){
     xunFeiApiKey = settings.value("xunFeiApiKey", "").toString();
     DeepseekApiKey = settings.value("DeepseekApiKey", "").toString();
     targetLanguage = settings.value("targetLanguage", 0).toInt();
-    audioDeviceId = settings.value("audioDeviceId", 0).toInt();
+
+    audioDeviceId = settings.value("audioDeviceId", 0).toString();
 
 }
 
@@ -53,6 +54,7 @@ void ConfigManager::loadManagerToFile(){
     settings.setValue("xunFeiApiKey", xunFeiApiKey);
     settings.setValue("DeepseekApiKey", DeepseekApiKey);
     settings.setValue("targetLanguage", targetLanguage);
+
     settings.setValue("audioDeviceId", audioDeviceId);
 
     settings.sync();

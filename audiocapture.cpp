@@ -35,7 +35,7 @@ bool AudioCapture::cap()
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
-    QAudioDevice device = QMediaDevices::audioInputs()[config.getAudioDeviceId()];
+    QAudioDevice device = config.getAudioDevice();
 
     QScopedPointer<QAudioSource> audioInput(new QAudioSource(device, format));
     QBuffer buffer;

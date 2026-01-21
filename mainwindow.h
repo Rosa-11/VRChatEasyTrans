@@ -40,6 +40,8 @@ public slots:
     void processAudio();
 
 public:
+    QList<QAudioDevice> devicelist;
+
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 };

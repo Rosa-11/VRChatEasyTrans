@@ -73,7 +73,7 @@ V
    ```bash
    git clone https://github.com/Rosa-11/VRCEasyTrans.git
    ```
-2. 构建项目
+2. 构建项目（使用 Qt Creator 直接点击构建即可）
    ```bash
    mkdir build && cd build
    cmake ..

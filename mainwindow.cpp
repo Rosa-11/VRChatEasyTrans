@@ -111,7 +111,7 @@ void MainWindow::on_launchButton_clicked()
         is_running = true;
         ui->launchButton->setText("停止");
         ui->debug->clear();
-        ui->debug->append("程序启动\n正在使用设备"+config.audioDeviceId);
+        ui->debug->append("程序启动\n正在使用设备"+QMediaDevices::audioInputs()[config.audioDeviceId].description());
 
         processAudio();
     }
@@ -165,13 +165,9 @@ void MainWindow::sendToOSC(const QString& text)
 
 // 从ConfigManager初始化UI
 void MainWindow::applyConfigToUi(){
-    this->devicelist = QMediaDevices::audioInputs();
-    for(QAudioDevice device : devicelist){
-        ui->deviceCombo->addItem(device.description());
-    }
-    for(int i=0;i<devicelist.size();i++){
-        if(devicelist[i].description() == config.getAudioDeviceId())
-            ui->deviceCombo->setCurrentIndex(i);
+    QList<QAudioDevice> devicelist = QMediaDevices::audioInputs();
+    for(QAudioDevice i : devicelist){
+        ui->deviceCombo->addItem(i.description());
     }
     ui->ApiKeyInput->setText(config.getXunFeiApiKey());
     ui->SecretKeyInput->setText(config.getXunFeiApiSecret());
@@ -182,12 +178,11 @@ void MainWindow::applyConfigToUi(){
     ui->silentTimeInput->setText(QString::number(config.getMinSilenceDuration()));
     ui->vadInput->setText(QString::number(config.getVadThreshold()*100));
     ui->languageCombo->setCurrentIndex(config.getTargetLanguage());
+    ui->deviceCombo->setCurrentIndex(config.getAudioDeviceId());
 }
 
 // 将UI应用到ConfigManager
 void MainWindow::applyUiToConfig(){
-    config.device = devicelist[ui->deviceCombo->currentIndex()];
-    config.audioDeviceId = devicelist[ui->deviceCombo->currentIndex()].description();
     config.xunFeiApiKey = ui->ApiKeyInput->text();
     config.xunFeiApiSecret = ui->SecretKeyInput->text();
     config.xunFeiAppId = ui->AppIdInput->text();
@@ -197,4 +192,5 @@ void MainWindow::applyUiToConfig(){
     config.minSilenceDuration = ui->silentTimeInput->text().toInt();
     config.vadThreshold = ui->vadInput->text().toFloat()/100;
     config.targetLanguage = ui->languageCombo->currentIndex();
+    config.audioDeviceId = ui->deviceCombo->currentIndex();
 }

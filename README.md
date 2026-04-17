@@ -50,7 +50,7 @@ V
 ### 技术栈/模块
 
 - 前端界面: Qt6 Widgets + QML
-- 语音识别: 讯飞星火
+- 语音识别: 讯飞星火（流式调用）
 - 文本翻译: Deepseek
 - 音频采集: Qt Multimedia
 - 网络通信: Qt Network (HTTP/OSC)
@@ -97,19 +97,19 @@ VRchat 设置
 
 ```
 src/
-├── main.cpp              # 程序入口
-├── MainWindow/           # 主窗口类
-├── AudioCapture/         # 音频采集
-├── SpeechRecogniser/     # 语音识别
-├── Translator/           # 翻译服务
-└── ConfigManager/        # 配置管理
+├── main.cpp              # 程序入口（主线程）
+├── MainWindow/           # 主窗口类（主线程）
+├── AudioCapture/         # 音频采集（主线程）
+├── SpeechRecogniser/     # 语音识别（子线程）
+├── Translator/           # 翻译服务（子线程）
+└── ConfigManager/        # 配置管理（单例加锁访问）
 ```
 
 计划实现的功能（优先级由高到低）
 
 1. 可配置的接入除中英文以外其他语言的语音识别API的方案
-2. 接入可识别中文方言的API
-4. 为系统资源冗余的用户提供本地语音识别模型
+2. 复用一个长连接（需要加心跳包维持连接）
+3. 接入可识别中文方言的API
 
 
 # 🤝 参与贡献

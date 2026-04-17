@@ -4,13 +4,8 @@
 #include <QObject>
 #include <QString>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QEventLoop>
-#include <QTimer>
 
-class ConfigManager;
+class QNetworkReply;
 
 class Translator : public QObject
 {
@@ -19,27 +14,23 @@ class Translator : public QObject
 public:
     explicit Translator(QObject *parent = nullptr);
 
-    // 翻译文本
-    QString translateText(const QString& text, const QString& targetLanguage = "English");
-
-    // 异步翻译
-    void translateTextAsync(const QString& text, const QString& targetLanguage = "English");
+public slots:
+    void translateTextAsync(const QString& text); // 翻译完成信号对应的槽函数
 
 signals:
-    void translationFinished(const QString& translatedText);
+    void translationFinished(const QString& translatedText);    ////////////////
     void translationError(const QString& errorMessage);
+    void debug(const QString& debugMessage);
 
 private slots:
     void onReplyFinished(QNetworkReply* reply);
 
 private:
-    ConfigManager& config;
-    QNetworkAccessManager* m_networkManager;
-    QString m_lastTranslation;
-    bool m_asyncMode;
+    QString buildRequestJson(const QString& text, const QString& targetLanguage) const;
+    QString parseTranslationResponse(const QByteArray& responseData) const;
 
-    QString buildRequestJson(const QString& text, const QString& targetLanguage);
-    QString parseTranslationResponse(const QByteArray& responseData);
+    QNetworkAccessManager* m_networkManager = nullptr;
+    bool m_asyncMode = false;
 };
 
 #endif // TRANSLATOR_H

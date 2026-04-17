@@ -1,182 +1,167 @@
 #include "AudioCapture.h"
+#include "ConfigManager.h"
 #include <QMediaDevices>
 #include <QAudioDevice>
-#include <QObject>
 #include <QDebug>
-#include <QList>
-#include <QFile>
-#include <QScopedPointer>
 #include <cmath>
-#include "ConfigManager.h"
 
-AudioCapture::AudioCapture(QObject* parent):
-    QObject(parent),
-    config(ConfigManager::instance())
+AudioCapture::AudioCapture(QObject *parent)
+    : QObject(parent)
 {
-    this->m_sentenceBuffer.reserve(config.getSampleRate() * 60);
-    this->m_shouldStop = false;
+    m_silenceTimer = new QTimer(this);
+    m_silenceTimer->setInterval(TIMER_INTERVAL);
+    connect(m_silenceTimer, &QTimer::timeout, this, &AudioCapture::checkSilence);
 }
 
-AudioCapture::~AudioCapture(){
+AudioCapture::~AudioCapture()
+{
     stop();
 }
 
-QVector<float>* AudioCapture::getBuffer(){
-    return &m_sentenceBuffer;
-}
-
-bool AudioCapture::cap()
+bool AudioCapture::initialize()
 {
-    m_sentenceBuffer.clear();
-    m_shouldStop.store(false);
+    // 从配置读取参数
+    ConfigManager &cfg = ConfigManager::getInstance();
+    m_vadThreshold = cfg.getVadThreshold();
+    m_minSilenceDuration = cfg.getMinSilenceDuration();
 
-    QAudioFormat format;
-    format.setSampleRate(config.getSampleRate());
-    format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::Int16);
+    // 设置音频格式
+    m_format.setSampleRate(cfg.getSampleRate());
+    m_format.setChannelCount(1);
+    m_format.setSampleFormat(QAudioFormat::Int16);
 
-    QAudioDevice device = config.getAudioDevice();
-
-    QScopedPointer<QAudioSource> audioInput(new QAudioSource(device, format));
-    QBuffer buffer;
-
-    if (!buffer.open(QIODevice::ReadWrite)) {
-        // qWarning() << "Failed to open buffer";
+    // 选择音频设备
+    QAudioDevice device;
+    QList<QAudioDevice> deviceList = QMediaDevices::audioInputs();
+    for(int i=0;i<deviceList.size();i++)
+        if(deviceList[i].description() == cfg.getDevice())
+            device = deviceList[i];
+    if (device.isNull()) {
+        device = QMediaDevices::defaultAudioInput();
+    }
+    if (!device.isFormatSupported(m_format)) {
+        emit error("Audio format not supported by selected device");
         return false;
     }
 
-    // VAD状态变量
-    bool isSpeaking = false;
-    bool hasStarted = false;
-    int silenceCounter = 0;
-    int speechCounter = 0;
-    const int speechStartThreshold = 1;
-    qint64 lastPos = 0;
+    m_audioSource = new QAudioSource(device, m_format, this);
+    return true;
+}
 
-    // qDebug() << "Listening... (Speak now)";
-
-    audioInput->start(&buffer);
-
-    QEventLoop loop;
-    QTimer processTimer;
-    processTimer.setInterval(50);
-
-    QObject::connect(&processTimer, &QTimer::timeout, [&]() {
-        // 检查中断标志
-        if (m_shouldStop.load()) {
-            // qDebug() << "Recording interrupted by user";
-            processTimer.stop();
-            audioInput->stop();
-            buffer.close();
-            loop.quit();
-            return;
-        }
-
-        qint64 bufferSize = buffer.size();
-        qint64 newDataSize = bufferSize - lastPos;
-
-        if (newDataSize > 0) {
-            qint64 savedPos = buffer.pos();
-            buffer.seek(lastPos);
-            QByteArray newData = buffer.read(newDataSize);
-            buffer.seek(savedPos);
-            lastPos = bufferSize;
-
-            if (newData.size() > 0) {
-                const int16_t* samples = reinterpret_cast<const int16_t*>(newData.constData());
-                int sampleCount = newData.size() / sizeof(int16_t);
-
-                // VAD分析
-                int speechSampleCount = 0;
-                float maxEnergy = 0.0f;
-                float totalEnergy = 0.0f;
-
-                for (int i = 0; i < sampleCount; ++i) {
-                    float sample = static_cast<float>(samples[i]) / 32768.0f;
-                    float energy = std::abs(sample);
-                    totalEnergy += energy;
-
-                    if (energy > maxEnergy) maxEnergy = energy;
-                    if (energy > config.getVadThreshold()) speechSampleCount++;
-                }
-
-                float avgEnergy = totalEnergy / sampleCount;
-                float speechRatio = static_cast<float>(speechSampleCount) / sampleCount;
-
-                bool hasSpeech = speechRatio > 0.08f && maxEnergy > config.getVadThreshold() * 1.5;
-
-                if (hasSpeech) {
-                    silenceCounter = 0;
-                    speechCounter++;
-
-                    if (!hasStarted && speechCounter >= speechStartThreshold) {
-                        hasStarted = true;
-                        isSpeaking = true;
-                        // qDebug() << "Speech detected! Recording...";
-                    } else if (hasStarted) {
-                        isSpeaking = true;
-                    }
-                } else {
-                    speechCounter = 0;
-                    if (hasStarted && isSpeaking) {
-                        silenceCounter += 50;
-                    }
-                }
-
-                // 保存录音数据
-                if (hasStarted) {
-                    for (int i = 0; i < sampleCount; ++i) {
-                        float sample = static_cast<float>(samples[i]) / 32768.0f;
-                        m_sentenceBuffer.append(sample);
-                    }
-
-                    // 每2秒显示进度
-                    if (m_sentenceBuffer.size() % (config.getSampleRate() * 2) == 0) {
-                        float duration = m_sentenceBuffer.size() / static_cast<float>(config.getSampleRate());
-                        // qDebug() << "Recording..." << QString::number(duration, 'f', 1) << "s, Silence:" << silenceCounter << "ms";
-                    }
-                }
-
-                // 检查停止条件
-                if (hasStarted && isSpeaking && silenceCounter >= config.getMinSilenceDuration()) {
-                    float duration = m_sentenceBuffer.size() / static_cast<float>(config.getSampleRate());
-                    // qDebug() << "Recording complete:" << QString::number(duration, 'f', 1) << "seconds";
-
-                    processTimer.stop();
-                    audioInput->stop();
-                    buffer.close();
-                    loop.quit();
-                    return;
-                }
-            }
-        }
-
-        // 保护机制：最长录制30秒
-        if (hasStarted && m_sentenceBuffer.size() > config.getSampleRate() * 30) {
-            // qDebug() << "Maximum recording time reached (30s)";
-            processTimer.stop();
-            audioInput->stop();
-            buffer.close();
-            loop.quit();
-        }
-    });
-
-    processTimer.start();
-    loop.exec();
-
-    processTimer.stop();
-
-    if (audioInput->state() != QAudio::StoppedState) {
-        audioInput->stop();
-    }
-    if (buffer.isOpen()) {
-        buffer.close();
+void AudioCapture::start()
+{
+    if (!m_audioSource) {
+        emit error("Audio source not initialized");
+        return;
     }
 
-    return !m_sentenceBuffer.isEmpty();
+    m_isSpeaking = false;
+    m_silenceDuration = 0;
+    m_buffer.clear();
+
+    m_audioDevice = m_audioSource->start();
+    if (!m_audioDevice) {
+        emit error("Failed to start audio capture");
+        return;
+    }
+
+    connect(m_audioDevice, &QIODevice::readyRead, this, &AudioCapture::onAudioDataReady);
+    m_silenceTimer->start();
+
+    emit recordingStarted();
+    qDebug() << "Audio capture started.";
 }
 
 void AudioCapture::stop()
 {
-    m_shouldStop.store(true);
+    m_silenceTimer->stop();
+
+    if (m_audioSource) {
+        m_audioSource->stop();
+    }
+
+    if (m_audioDevice) {
+        disconnect(m_audioDevice, &QIODevice::readyRead, this, &AudioCapture::onAudioDataReady);
+        m_audioDevice = nullptr;
+    }
+
+    // 如果正在说话，强制结束
+    if (m_isSpeaking) {
+        m_isSpeaking = false;
+        emit vadStateChanged(false);
+        emit recordingFinished();
+    }
+
+    qDebug() << "Audio capture stopped.";
+}
+
+void AudioCapture::onAudioDataReady()
+{
+    if (!m_audioDevice) return;
+
+    QByteArray data = m_audioDevice->readAll();
+    if (data.isEmpty()) return;
+
+    // VAD 处理
+    processVAD(data);
+}
+
+void AudioCapture::processVAD(const QByteArray &data)
+{
+    float rms = calculateRMS(data);
+    bool currentlySpeaking = (rms > m_vadThreshold);
+
+    if (currentlySpeaking) {
+        // 有声音：重置静音计时
+        m_silenceDuration = 0;
+
+        if (!m_isSpeaking) {
+            m_isSpeaking = true;
+            emit vadStateChanged(true);
+            qDebug() << "VAD: speech started";
+        }
+
+        // 发送音频数据
+        emit audioDataReady(data);
+    } else {
+        // 静音状态：数据不发送，仅用于 VAD 检测
+        if (m_isSpeaking) {
+            // 持续静音中，累加时间（由 checkSilence 定时器处理）
+        }
+    }
+
+    // 缓存部分数据用于后续 VAD 细化（可选）
+    // 这里简化处理，直接基于当前块判断
+}
+
+float AudioCapture::calculateRMS(const QByteArray &data)
+{
+    if (data.size() < 2) return 0.0f;
+
+    const int16_t *samples = reinterpret_cast<const int16_t*>(data.constData());
+    int sampleCount = data.size() / sizeof(int16_t);
+
+    double sum = 0.0;
+    for (int i = 0; i < sampleCount; ++i) {
+        double sample = samples[i] / 32768.0;  // 归一化到 [-1, 1]
+        sum += sample * sample;
+    }
+
+    return std::sqrt(sum / sampleCount);
+}
+
+void AudioCapture::checkSilence()
+{
+    if (!m_isSpeaking) return;
+
+    m_silenceDuration += TIMER_INTERVAL;
+
+    if (m_silenceDuration >= m_minSilenceDuration) {
+        // 静音超时，结束本次识别
+        m_isSpeaking = false;
+        emit vadStateChanged(false);
+        emit recordingFinished();
+        qDebug() << "VAD: speech ended (silence timeout)";
+        m_silenceDuration = 0;
+    }
 }

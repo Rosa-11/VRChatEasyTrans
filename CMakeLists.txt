@@ -24,17 +24,14 @@ set(PROJECT_SOURCES
     ConfigManager.cpp
     audiocapture.h
     audiocapture.cpp
-    speechrecogniser.h speechrecogniser.cpp  # 移至此处
-    translator.h translator.cpp              # 移至此处
+    speechrecogniser.h speechrecogniser.cpp
+    translator.h translator.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(VRChatEasyTrans-AI
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        speechrecogniser.h speechrecogniser.cpp
-        translator.h translator.cpp
-
     )
 
     qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})

@@ -1,71 +1,77 @@
 #ifndef CONFIGMANAGER_H
 #define CONFIGMANAGER_H
 
-#include <QString>
-#include <QSettings>
 #include <QObject>
-#include <QVariant>
+#include <QMutex>
 #include <QAudioDevice>
 
 class ConfigManager : public QObject
 {
     Q_OBJECT
-    friend class MainWindow;
+
+private:
+    explicit ConfigManager(QObject *parent = nullptr);
+
+    // 全局唯一静态锁
+    static QMutex m_globalMutex;
+
+    // 所有成员变量全部私有化！禁止直接访问！
+    double m_vadThreshold;
+    int    m_minSilenceDuration;
+    int    m_targetPort;
+    QString m_targetHost;
+    QString m_xunFeiAppId;
+    QString m_xunFeiApiSecret;
+    QString m_xunFeiApiKey;
+    QString m_DeepseekApiKey;
+    QString m_targetLanguage;
+    QString m_device;
+
+    int     sampleRate;
 
 public:
-    explicit ConfigManager(QObject *parent = nullptr);
-    ~ConfigManager();
+    static ConfigManager& getInstance();
 
-    // 单例模式访问
-    static ConfigManager& instance();
+    // 禁止拷贝
+    ConfigManager(const ConfigManager&) = delete;
+    ConfigManager& operator=(const ConfigManager&) = delete;
 
+    // 配置读写
     void loadFileToManager();
     void loadManagerToFile();
 
-    // getter方法
-    QAudioDevice getAudioDevice() const { return device; }
+    // ===================== 自动加锁的安全 get/set =====================
+    double getVadThreshold() const;
+    void setVadThreshold(double value);
 
-    QString getXunFeiAppId() const { return xunFeiAppId; }
-    QString getXunFeiApiKey() const { return xunFeiApiKey; }
-    QString getXunFeiApiSecret() const { return xunFeiApiSecret; }
+    int getMinSilenceDuration() const;
+    void setMinSilenceDuration(int value);
 
-    QString getDeepseekApiKey() const { return DeepseekApiKey; }
+    int getTargetPort() const;
+    void setTargetPort(int value);
 
-    QString getAudioDeviceId() const { return audioDeviceId; }
-    float getVadThreshold() const { return vadThreshold; }
-    int getMinSilenceDuration() const {return minSilenceDuration; }
-    int getSampleRate() const { return 16000; }         // 采样率必须是16000，不设置成员变量
+    QString getTargetHost() const;
+    void setTargetHost(const QString& value);
 
-    QString getTargetHost() const { return targetHost; }
-    quint16 getTargetPort() const { return targetPort; }
+    QString getXunFeiAppId() const;
+    void setXunFeiAppId(const QString& value);
 
-    int getTargetLanguage() const { return targetLanguage; }
+    QString getXunFeiApiSecret() const;
+    void setXunFeiApiSecret(const QString& value);
 
-signals:
-    void configChanged(const QString& key, const QVariant& value);
+    QString getXunFeiApiKey() const;
+    void setXunFeiApiKey(const QString& value);
 
-private:
+    QString getDeepseekApiKey() const;
+    void setDeepseekApiKey(const QString& value);
 
-    // 声音录制设置
-    QAudioDevice device;
-    QString audioDeviceId;  // 设备描述（用于记录）
+    QString getTargetLanguage() const;
+    void setTargetLanguage(QString value);
 
-    float vadThreshold;        // 0~1
-    int minSilenceDuration;    // 单位：ms
+    QString getDevice() const;
+    void setDevice(const QString& value);
 
-    // VRChat OSC 配置
-    QString targetHost;
-    quint16 targetPort;
-
-    // API 配置
-    QString xunFeiAppId;      // 讯飞App ID
-    QString xunFeiApiKey;     // 讯飞API Key
-    QString xunFeiApiSecret;  // 讯飞API Secret
-
-    QString DeepseekApiKey;   // Deepseek API Key
-
-    int targetLanguage;   // 目标翻译语言
-
+    int getSampleRate();
 };
 
-#endif // CONFIGMANAGER_H
+#endif

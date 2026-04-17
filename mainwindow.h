@@ -2,10 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QThreadPool>
+#include <QAtomicInt>
 #include "ConfigManager.h"
-#include "audiocapture.h"
-#include "speechrecogniser.h"
-#include "translator.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -24,9 +23,6 @@ private:
     Ui::MainWindow *ui;
 
     ConfigManager &config;
-    AudioCapture *capture;
-    SpeechRecogniser *recogniser;
-    Translator *translator;
 
     bool is_running;
     QTimer* audioTimer;
@@ -36,12 +32,17 @@ private:
     void applyConfigToUi();
     void applyUiToConfig();
 
-public slots:
-    void processAudio();
+
+signals:
+    void startRecordingRequested();
+    void stopRecordingRequested();
 
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+public slots:
+    void onError(const QString& errorMessage);
+    void onDebug(const QString& debugMessage);
 };
 
 #endif // MAINWINDOW_H

@@ -1,259 +1,302 @@
 #include "speechrecogniser.h"
-#include <QNetworkRequest>
-#include <QNetworkReply>
+#include "ConfigManager.h"
+#include <QUrl>
+#include <QThread>
+#include <QUrlQuery>
+#include <QDateTime>
+#include <QCryptographicHash>
+#include <QMessageAuthenticationCode>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QEventLoop>
-#include <QTimer>
+#include <QUuid>
 #include <QDebug>
-#include <cmath>
-#include <QWebSocket>
-#include <QUrlQuery>
-#include <QMessageAuthenticationCode>
-#include <QCryptographicHash>
 
-SpeechRecogniser::SpeechRecogniser(QObject* parent)
+SpeechRecogniser::SpeechRecogniser(QObject *parent)
     : QObject(parent)
-    , config(ConfigManager::instance())
-{}
+{
+}
 
 SpeechRecogniser::~SpeechRecogniser()
-{}
-
-QString SpeechRecogniser::generateAuthorizationHeader()
 {
-    // 从ConfigManager获取配置
-    QString apiKey = config.getXunFeiApiKey();
-    QString apiSecret = config.getXunFeiApiSecret();
-
-    if (apiKey.isEmpty() || apiSecret.isEmpty()) {
-        // qDebug() << "Error: XunFei API configuration is incomplete";
-        return "";
+    if (m_webSocket) {
+        m_webSocket->close();
     }
-
-    // 生成RFC1123格式的时间戳
-    QDateTime currentTime = QDateTime::currentDateTimeUtc();
-    QString date = currentTime.toString("ddd, dd MMM yyyy hh:mm:ss") + " GMT";
-
-    // 生成签名原始字符串
-    QString host = "iat-api.xfyun.cn";
-    QString requestLine = "GET /v2/iat HTTP/1.1";
-    QString signatureOrigin = QString("host: %1\ndate: %2\n%3").arg(host).arg(date).arg(requestLine);
-
-    // 使用API Secret进行HMAC-SHA256加密
-    QMessageAuthenticationCode hmac(QCryptographicHash::Sha256);
-    hmac.setKey(apiSecret.toUtf8());
-    hmac.addData(signatureOrigin.toUtf8());
-    QByteArray signature = hmac.result().toBase64();
-
-    // 生成authorization原始字符串并进行base64编码
-    QString authorizationOrigin = QString("api_key=\"%1\", algorithm=\"%2\", headers=\"%3\", signature=\"%4\"")
-                                      .arg(apiKey)
-                                      .arg("hmac-sha256")
-                                      .arg("host date request-line")
-                                      .arg(QString(signature));
-
-    return authorizationOrigin.toUtf8().toBase64();
 }
 
-QString SpeechRecogniser::recognizeSpeech(const QVector<float>& audio_data, int sample_rate, int channels)
+void SpeechRecogniser::initialize()
 {
-    if (audio_data.isEmpty()) {
-        // qDebug() << "Audio data is empty";
-        return "";
+    qDebug() << "SpeechRecogniser initializing in thread:" << QThread::currentThreadId();
+
+    ConfigManager &cfg = ConfigManager::getInstance();
+    m_appId = cfg.getXunFeiAppId();
+    m_apiKey = cfg.getXunFeiApiKey();
+    m_apiSecret = cfg.getXunFeiApiSecret();
+    m_sampleRate = cfg.getSampleRate();
+
+    m_webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
+    connect(m_webSocket, &QWebSocket::connected, this, &SpeechRecogniser::onConnected);
+    connect(m_webSocket, &QWebSocket::textMessageReceived, this, &SpeechRecogniser::onTextMessageReceived);
+    connect(m_webSocket, &QWebSocket::disconnected, this, &SpeechRecogniser::onDisconnected);
+    connect(m_webSocket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+            this, &SpeechRecogniser::onError);
+
+    m_heartbeatTimer = new QTimer(this);
+    m_heartbeatTimer->setInterval(30000);
+
+    m_chunkTimer = new QTimer(this);
+    m_chunkTimer->setSingleShot(true);
+    connect(m_chunkTimer, &QTimer::timeout, this, &SpeechRecogniser::sendNextChunk);
+
+    m_sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_completed = false;
+}
+
+void SpeechRecogniser::processAudioData(const QByteArray &data)
+{
+    if (m_completed) return;
+
+    if (!m_isConnected) {
+        m_pendingChunks.enqueue(data);
+        if (m_webSocket->state() == QAbstractSocket::UnconnectedState) {
+            QString url = generateAuthUrl();
+            m_webSocket->open(QUrl(url));
+            emit socketStateChanged("Connecting...");
+        }
+        return;
     }
 
-    if (config.getXunFeiAppId().isEmpty() ||
-        config.getXunFeiApiKey().isEmpty() ||
-        config.getXunFeiApiSecret().isEmpty()) {
-        // qDebug() << "XunFei API configuration is incomplete";
-        return "Error: API configuration incomplete";
+    m_pendingChunks.enqueue(data);
+    if (!m_chunkTimer->isActive()) {
+        m_chunkTimer->start(0);
+    }
+}
+
+void SpeechRecogniser::finishRecognition()
+{
+    qDebug() << "SpeechRecogniser: finishing recognition";
+    if (m_completed) return;
+
+    m_isFinishing = true;
+
+    if (!m_isConnected) {
+        // 从未连上服务器，视为错误，不触发翻译
+        emit error("Recognition failed: could not connect to server.");
+        m_completed = true;
+        return;
     }
 
-    QWebSocket webSocket;
-    QString recognitionResult;
-    bool recognitionCompleted = false;
-
-    QObject::connect(&webSocket, &QWebSocket::connected, [&]() {
-        // qDebug() << "WebSocket connected, sending audio data...";
-        sendAudioData(&webSocket, audio_data);
-    });
-
-    QObject::connect(&webSocket, &QWebSocket::textMessageReceived, [&](const QString& message) {
-        QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
-        if (doc.isNull()) {
-            // qDebug() << "Null net package";
-            return;
-        }
-
-        QJsonObject obj = doc.object();
-
-        if (obj.contains("code") && obj["code"].toInt() != 0) {
-            int errorCode = obj["code"].toInt();
-            QString errorMsg = obj["message"].toString("Unknown error");
-            recognitionResult = QString("Error[%1]: %2").arg(errorCode).arg(errorMsg);
-            recognitionCompleted = true;
-            return;
-        }
-
-        // 解析识别结果
-        if (obj.contains("data")) {
-            QJsonObject dataObj = obj["data"].toObject();
-            int status = dataObj["status"].toInt();
-
-            if (dataObj.contains("result")) {
-                QJsonObject resultObj = dataObj["result"].toObject();
-
-                // 解析文本
-                if (resultObj.contains("ws")) {
-                    QString text;
-                    QJsonArray wsArray = resultObj["ws"].toArray();
-                    for (const QJsonValue& wsValue : wsArray) {
-                        QJsonObject wsObj = wsValue.toObject();
-                        if (wsObj.contains("cw")) {
-                            QJsonArray cwArray = wsObj["cw"].toArray();
-                            for (const QJsonValue& cwValue : cwArray) {
-                                QJsonObject cwObj = cwValue.toObject();
-                                if (cwObj.contains("w")) {
-                                    text += cwObj["w"].toString();
-                                }
-                            }
-                        }
-                    }
-                    if (!text.isEmpty()) {
-                        if (!recognitionResult.isEmpty()) {
-                            recognitionResult += " ";
-                            recognitionResult += text;
-                        } else {
-                            recognitionResult = text;
-                        }
-                        // qDebug() << "Accumulated recognition text:" << recognitionResult;
-                    }
-                }
-            }
-            if (status == 2) {
-                // qDebug() << "Recognition completed";
-                recognitionCompleted = true;
-            }
-        }
-    });
-
-    QObject::connect(&webSocket, &QWebSocket::disconnected, [&]() {
-        // qDebug() << "WebSocket disconnected";
-        recognitionCompleted = true;
-    });
-
-    QObject::connect(&webSocket, &QWebSocket::errorOccurred, [&](QAbstractSocket::SocketError error) {
-        // qDebug() << "WebSocket error:" << webSocket.errorString();
-        recognitionResult = "Error: " + webSocket.errorString();
-        recognitionCompleted = true;
-    });
-
-    // 生成认证并建立连接
-    QString authorization = generateAuthorizationHeader();
-    if (authorization.isEmpty()) {
-        return "Error: Failed to generate authorization";
+    // 等待发送队列处理完毕，由 sendNextChunk 发送结束帧
+    if (!m_chunkTimer->isActive() && m_pendingChunks.isEmpty() && m_currentOffset == 0) {
+        sendAudioFrame(QByteArray(), 2);
     }
+}
 
-    QDateTime currentTime = QDateTime::currentDateTimeUtc();
-    QString date = currentTime.toString("ddd, dd MMM yyyy hh:mm:ss") + " GMT";
+QString SpeechRecogniser::generateAuthUrl()
+{
+    QDateTime now = QDateTime::currentDateTimeUtc();
+    QString date = now.toString("ddd, dd MMM yyyy HH:mm:ss 'GMT'");
 
-    QUrl url("wss://iat-api.xfyun.cn/v2/iat");
+    QString requestLine = "GET " + m_path + " HTTP/1.1";
+    QString signatureOrigin = "host: " + m_host + "\ndate: " + date + "\n" + requestLine;
+
+    QByteArray signatureSha = QMessageAuthenticationCode::hash(
+        signatureOrigin.toUtf8(),
+        m_apiSecret.toUtf8(),
+        QCryptographicHash::Sha256);
+    QString signature = signatureSha.toBase64();
+
+    QString authOrigin = QString("api_key=\"%1\", algorithm=\"hmac-sha256\", "
+                                 "headers=\"host date request-line\", signature=\"%2\"")
+                             .arg(m_apiKey, signature);
+    QString authorization = authOrigin.toUtf8().toBase64();
+
+    QUrl url;
+    url.setScheme("wss");
+    url.setHost(m_host);
+    url.setPath(m_path);
     QUrlQuery query;
-    query.addQueryItem("authorization", authorization);
+    query.addQueryItem("host", m_host);
     query.addQueryItem("date", date);
-    query.addQueryItem("host", "iat-api.xfyun.cn");
+    query.addQueryItem("authorization", authorization);
     url.setQuery(query);
 
-    // qDebug() << "Connecting to XunFei speech recognition...";
-    webSocket.open(url);
+    return url.toString();
+}
 
-    // 等待识别完成
-    QEventLoop loop;
-    QTimer timeoutTimer;
-    timeoutTimer.setSingleShot(true);
+void SpeechRecogniser::onConnected()
+{
+    qDebug() << "WebSocket connected. Thread:" << QThread::currentThreadId();
+    m_isConnected = true;
+    emit socketStateChanged("Connected");
 
-    QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-    timeoutTimer.start(15000); // 15秒超时
+    m_heartbeatTimer->start();
+    sendFirstFrame();
 
-    QTimer checkTimer;
-    QObject::connect(&checkTimer, &QTimer::timeout, [&]() {
-        if (recognitionCompleted) {
-            loop.quit();
+    if (!m_pendingChunks.isEmpty() && !m_chunkTimer->isActive()) {
+        m_chunkTimer->start(0);
+    }
+}
+
+void SpeechRecogniser::sendFirstFrame()
+{
+    QJsonObject frame = {
+        {
+            "common", QJsonObject
+            {
+               {"app_id", m_appId}
+            }
+        },
+        {
+            "business", QJsonObject
+            {
+                {"language", "zh_cn"},
+                {"domain", "iat"},
+                {"accent", "mandarin"}
+            }
+        },
+        {"data", QJsonObject
+            {
+                 {"status", 0},
+                 {"format", QString("audio/L16;rate=%1").arg(m_sampleRate)},
+                 {"encoding", "raw"},
+                 {"audio", ""}
+            }
         }
-    });
-    checkTimer.start(100);
+    };
 
-    loop.exec();
-
-    if (webSocket.state() != QAbstractSocket::UnconnectedState) {
-        webSocket.close();
-    }
-
-    // qDebug() << "Final recognition result:" << recognitionResult;
-    return recognitionResult;
+    m_webSocket->sendTextMessage(QJsonDocument(frame).toJson(QJsonDocument::Compact));
+    m_firstFrameSent = true;
 }
 
-QVector<int16_t> SpeechRecogniser::convertFloatToInt16(const QVector<float>& audio_data)
+void SpeechRecogniser::sendAudioFrame(const QByteArray &audioData, int status)
 {
-    QVector<int16_t> int16_data;
-    int16_data.resize(audio_data.size());
-
-    for (int i = 0; i < audio_data.size(); ++i) {
-        // audio输入在-1.0到1.0范围内，不是我喜欢的类型，直接将float转换为int16
-        float sample = qBound(-1.0f, audio_data[i], 1.0f);
-        int16_data[i] = static_cast<int16_t>(sample * 32767.0f);
-    }
-
-    return int16_data;
+    QJsonObject frame = {
+        {"data", QJsonObject
+            {
+                {"status", status},
+                {"format", QString("audio/L16;rate=%1").arg(m_sampleRate)},
+                {"encoding", "raw"},
+                {"audio", QString::fromUtf8(audioData.toBase64())}
+            }
+        }
+    };
+    m_webSocket->sendTextMessage(QJsonDocument(frame).toJson(QJsonDocument::Compact));
 }
 
-void SpeechRecogniser::sendAudioData(QWebSocket* webSocket, const QVector<float>& audio_data)
+void SpeechRecogniser::sendNextChunk()
 {
-    if (!webSocket) return;
+    if (!m_isConnected || m_completed) return;
 
-    // 转换为16位 PCM
-    QVector<int16_t> pcmData = convertFloatToInt16(audio_data);
+    // 继续发送当前分块的剩余部分
+    if (m_currentOffset > 0) {
+        int remaining = m_currentSendingChunk.size() - m_currentOffset;
+        int chunkSize = qMin(m_chunkSize, remaining);
+        QByteArray chunk = m_currentSendingChunk.mid(m_currentOffset, chunkSize);
+        m_currentOffset += chunkSize;
+        sendAudioFrame(chunk, 1);
 
-    QJsonObject common;
-    common["app_id"] = config.getXunFeiAppId();
+        if (m_currentOffset < m_currentSendingChunk.size()) {
+            m_chunkTimer->start(40);
+            return;
+        } else {
+            m_currentOffset = 0;
+            m_currentSendingChunk.clear();
+        }
+    }
 
-    QJsonObject business;
-    business["language"] = "zh_cn";
-    business["domain"] = "iat";
-    business["accent"] = "mandarin";
+    // 处理队列中的下一块
+    if (!m_pendingChunks.isEmpty()) {
+        m_currentSendingChunk = m_pendingChunks.dequeue();
+        m_currentOffset = 0;
+        m_chunkTimer->start(0);
+        return;
+    }
 
-    QByteArray audioBytes(reinterpret_cast<const char*>(pcmData.constData()),
-                          pcmData.size() * sizeof(int16_t));
-    QString audioBase64 = QString(audioBytes.toBase64());
+    // 队列空，若正在结束状态则发送结束帧
+    if (m_isFinishing && !m_completed) {
+        sendAudioFrame(QByteArray(), 2);
+        m_isFinishing = false; // 避免重复发送结束帧
+        qDebug() << "Sent end-of-stream frame.";
+    }
+}
 
-    QJsonObject data;
-    data["status"] = 0;  // 第一帧
-    data["format"] = "audio/L16;rate=16000";
-    data["encoding"] = "raw";
-    data["audio"] = audioBase64;
+void SpeechRecogniser::onTextMessageReceived(const QString &message)
+{
+    if (m_completed) return;
 
-    QJsonObject message;
-    message["common"] = common;
-    message["business"] = business;
-    message["data"] = data;
+    QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
+    if (doc.isNull()) return;
 
-    QJsonDocument doc(message);
-    QString messageStr = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+    QJsonObject obj = doc.object();
 
-    // qDebug() << "Sending audio data, size:" << audio_data.size() << "samples";
-    webSocket->sendTextMessage(messageStr);
+    if (obj.contains("code") && obj["code"].toInt() != 0) {
+        emit error(QString("API Error: %1 - %2").arg(obj["code"].toInt()).arg(obj["message"].toString()));
+        m_webSocket->close();
+        m_completed = true;
+        return;
+    }
 
-    QJsonObject endData;
-    endData["status"] = 2;
+    QJsonObject data = obj["data"].toObject();
+    int status = data["status"].toInt();
 
-    QJsonObject endMessage;
-    endMessage["data"] = endData;
+    // 解析识别文本
+    QString text;
+    QJsonArray ws = data["result"].toObject()["ws"].toArray();
+    for (const QJsonValue &wordVal : ws) {
+        QJsonArray cw = wordVal.toObject()["cw"].toArray();
+        for (const QJsonValue &cVal : cw) {
+            text += cVal.toObject()["w"].toString();
+        }
+    }
 
-    QJsonDocument endDoc(endMessage);
-    QString endMsgStr = QString::fromUtf8(endDoc.toJson(QJsonDocument::Compact));
-    webSocket->sendTextMessage(endMsgStr);
+    if (!text.isEmpty()) {
+        if (status == 1) {
+            m_partialText += text;
+            emit recognitionPartial(m_partialText);
+        } else if (status == 2) {
+            m_partialText += text;
+            QString finalText = m_partialText.trimmed();
 
-    // qDebug() << "Audio data sent";
+            if (!finalText.isEmpty()) {
+                emit recognitionCompleted(finalText);   // ✅ 唯一成功出口
+                emit debug("Recognition completed: " + finalText);
+            } else {
+                emit error("Recognition result is empty.");
+            }
+            m_completed = true;
+            m_webSocket->close(QWebSocketProtocol::CloseCodeNormal, "Finished");
+            return;
+        }
+    }
+
+    if (status == 2) {
+        // 最终结果但文本为空
+        emit error("Recognition completed with empty text.");
+        m_completed = true;
+        m_webSocket->close();
+    }
+}
+
+void SpeechRecogniser::onDisconnected()
+{
+    m_isConnected = false;
+    m_firstFrameSent = false;
+    m_heartbeatTimer->stop();
+    emit socketStateChanged("Disconnected");
+
+    // 非正常完成（如网络断开）且尚未处理完成时，报告错误
+    if (!m_completed) {
+        emit error("Connection lost before recognition completed.");
+        m_completed = true;
+    }
+}
+
+void SpeechRecogniser::onError(QAbstractSocket::SocketError error)
+{
+    Q_UNUSED(error)
+    QString errMsg = m_webSocket->errorString();
+    qCritical() << "WebSocket error:" << errMsg;
+    emit this->error("WebSocket error: " + errMsg);
+    m_completed = true;
 }

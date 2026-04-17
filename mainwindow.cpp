@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include <QtConcurrent/QtConcurrent>
 #include <QMediaDevices>
 #include <QDebug>
 #include <QTimer>
@@ -8,89 +9,31 @@
 
 #include <QUdpSocket>
 
+#define MAX_LANGUAGE_COUNT 7
 QString language[] = {"英语", "日语", "韩语", "俄语", "法语", "德语", "西班牙语" };
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , is_running(false)
-    , config(ConfigManager::instance())     // 配置类静态实例引用
+    , config(ConfigManager::getInstance())     // 配置类静态实例引用
     , audioTimer(new QTimer(this))
-    , capture(new AudioCapture(this))
-    , translator(new Translator(this))
-
 {
     ui->setupUi(this);
 
     config.loadFileToManager();             // 从配置文件读取配置到管理类
-
     applyConfigToUi();                      // 将配置从管理类应用到UI
-
-    connect(audioTimer, &QTimer::timeout, this, &MainWindow::processAudio);
 }
 
-MainWindow::~MainWindow()
-{
-    delete ui;
-    if (capture) {
-        delete capture;
-    }
-}
-
-void MainWindow::processAudio()
-{
-    if (!is_running || !capture)
-        return;
-
-    audioTimer->stop();
-
-    bool caped = capture->cap();
-
-    if (!is_running) {
-        return;
-    }
-
-    if (caped) {
-        QString result = recogniser->recognizeSpeech(*(capture->getBuffer()), config.getSampleRate(), 1);
-
-        if (result.isEmpty()) {
-            // qDebug() << "mainwindow.cpp: empty Recogntion result";
-            ui->debug->append("请调整静音阈值以减少杂音，确保讲普通话");
-            sendToOSC("喵~✨");
-        }
-        else {
-            sendToOSC(result);
-            QString finaltext = translator->translateText(result, language[config.getTargetLanguage()]);
-            if(finaltext.isEmpty()){
-                // qDebug() << "mainwindow.cpp: empty Translation result";
-                ui->debug->append("Deepseek 表示不会翻译\n");
-                finaltext = "(...)";
-            }
-            sendToOSC(result + "\n" + finaltext);
-        }
-    }
-    else {
-        // qDebug() << "no audio detected";
-        ui->debug->append("讲话声音大一点...\n");
-    }
-
-    if (is_running) {
-        audioTimer->start();
-    }
-}
+MainWindow::~MainWindow(){}
 
 void MainWindow::on_launchButton_clicked()
 {
     if(is_running){
-        if(recogniser)
-            delete recogniser;
+        ui->debug->append("\n结束\n");
         is_running = false;
         audioTimer->stop();
         ui->launchButton->setText("启动!");
-
-        if (capture) {
-            capture->stop();
-        }
     }
     else{
         if(ui->ApiKeyInput->text().isEmpty() ||
@@ -98,22 +41,16 @@ void MainWindow::on_launchButton_clicked()
             ui->SecretKeyInput->text().isEmpty() ||
             ui->DeepseekApiKeyInput->text().isEmpty()
             ){
-            ui->debug->append("未配置 API 信息，请访问GitHub页面或查看使用说明（辛辛苦苦写的文档怎么没人看QAQ）");
+            ui->debug->append("未配置 API 信息，请访问GitHub页面或查看使用说明");
             return ;
         }
 
         applyUiToConfig();                  // 将UI修改应用到管理类
-
         config.loadManagerToFile();         // 将管理类里面的配置写入配置文件
-
-        recogniser = new SpeechRecogniser(this);
-
         is_running = true;
         ui->launchButton->setText("停止");
         ui->debug->clear();
-        ui->debug->append("程序启动\n正在使用设备"+QMediaDevices::audioInputs()[config.audioDeviceId].description());
-
-        processAudio();
+        ui->debug->append("程序启动\n正在使用设备"+config.getDevice());
     }
 }
 
@@ -153,22 +90,18 @@ void MainWindow::sendToOSC(const QString& text)
     // 发送UDP数据
     QUdpSocket udpSocket;
     qint64 bytesSent = udpSocket.writeDatagram(oscData, targetHost, targetPort);
-
-    if (bytesSent == -1) {
-        // qWarning() << "OSC发送失败：" << udpSocket.errorString();
-        ui->debug->append( "OSC发送失败：" + udpSocket.errorString());
-    } else {
-        // qWarning() << "OSC发送成功：" << text << "（字节数：" << bytesSent << "）";
-        ui->debug->append( "OSC：" + text);
-    }
 }
 
 // 从ConfigManager初始化UI
 void MainWindow::applyConfigToUi(){
+    int tmpId = 0;
     QList<QAudioDevice> devicelist = QMediaDevices::audioInputs();
-    for(QAudioDevice i : devicelist){
-        ui->deviceCombo->addItem(i.description());
+    for (int i=0;i<devicelist.size();i++) {
+        ui->deviceCombo->addItem(devicelist[i].description());
+        if(devicelist[i].isDefault())
+            tmpId = i;
     }
+    ui->deviceCombo->setCurrentIndex(tmpId);
     ui->ApiKeyInput->setText(config.getXunFeiApiKey());
     ui->SecretKeyInput->setText(config.getXunFeiApiSecret());
     ui->AppIdInput->setText(config.getXunFeiAppId());
@@ -177,20 +110,29 @@ void MainWindow::applyConfigToUi(){
     ui->oscPortInput->setText(QString::number(config.getTargetPort()));
     ui->silentTimeInput->setText(QString::number(config.getMinSilenceDuration()));
     ui->vadInput->setText(QString::number(config.getVadThreshold()*100));
-    ui->languageCombo->setCurrentIndex(config.getTargetLanguage());
-    ui->deviceCombo->setCurrentIndex(config.getAudioDeviceId());
+    for(int i=0;i<MAX_LANGUAGE_COUNT;i++)
+        if(config.getTargetLanguage()[0] == language[i][0])
+            tmpId = i;
+    ui->languageCombo->setCurrentIndex(tmpId);
 }
 
 // 将UI应用到ConfigManager
 void MainWindow::applyUiToConfig(){
-    config.xunFeiApiKey = ui->ApiKeyInput->text();
-    config.xunFeiApiSecret = ui->SecretKeyInput->text();
-    config.xunFeiAppId = ui->AppIdInput->text();
-    config.DeepseekApiKey = ui->DeepseekApiKeyInput->text();
-    config.targetHost = ui->oscHostInput->text();
-    config.targetPort = ui->oscPortInput->text().toInt();
-    config.minSilenceDuration = ui->silentTimeInput->text().toInt();
-    config.vadThreshold = ui->vadInput->text().toFloat()/100;
-    config.targetLanguage = ui->languageCombo->currentIndex();
-    config.audioDeviceId = ui->deviceCombo->currentIndex();
+    config.setDevice(ui->deviceCombo->currentText());
+    config.setXunFeiApiKey(ui->ApiKeyInput->text());
+    config.setXunFeiApiSecret(ui->SecretKeyInput->text());
+    config.setXunFeiAppId(ui->AppIdInput->text());
+    config.setDeepseekApiKey(ui->DeepseekApiKeyInput->text());
+    config.setTargetHost(ui->oscHostInput->text());
+    config.setTargetPort(ui->oscPortInput->text().toInt());
+    config.setMinSilenceDuration(ui->silentTimeInput->text().toInt());
+    config.setVadThreshold(ui->vadInput->text().toFloat()/100);
+    config.setTargetLanguage(ui->languageCombo->currentText());
+}
+
+void MainWindow::onError(const QString& errorMessage){
+    ui->debug->append("[ERROR]" + errorMessage);
+}
+void MainWindow::onDebug(const QString& debugMessage){
+    ui->debug->append(debugMessage);
 }

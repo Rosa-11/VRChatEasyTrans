@@ -45,6 +45,9 @@
 ├── 得到的外文文本，打包成OSC发送到VRChat
 ├── 文本翻译显示
 V
+
+其中主窗口类和AudioCapture类的方法运行于主线程，SpeechRecogniser、Translator、SoloOscBroadcaster三个类的方法分别运行于各自的线程，通过信号与槽机制进行通信，总计一个主线程和三个子线程。
+请务必仔细阅读main.cpp中提到的各个对象的实例化顺序！！ConfigManager依赖主应用类，其余工作类和主窗口类均依赖ConfigManager
 ```
 
 ### 技术栈/模块

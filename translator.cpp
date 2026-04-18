@@ -23,15 +23,20 @@ Translator::Translator(QObject *parent)
             this, &Translator::onReplyFinished);
 }
 
+void Translator::initialize()
+{
+    qDebug() << "\nTranslator initialize";
+    targetLanguage = ConfigManager::getInstance().getTargetLanguage();
+    apiKey = ConfigManager::getInstance().getDeepseekApiKey();
+}
+
 void Translator::translateTextAsync(const QString& text)
 {
-    QString targetLanguage = ConfigManager::getInstance().getTargetLanguage();
     if (text.isEmpty()) {
         emit translationError("Text is empty");
         return;
     }
 
-    const QString apiKey = ConfigManager::getInstance().getDeepseekApiKey();
     if (apiKey.isEmpty()) {
         emit translationError("API Key not configured");
         return;

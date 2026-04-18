@@ -1,10 +1,9 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
-#include <QtConcurrent/QtConcurrent>
 #include <QMediaDevices>
 #include <QDebug>
-#include <QTimer>
-#include <QDateTime>
+#include <QTimer> ///////////////
+#include <QDateTime>////////////
 #include <QDir>
 
 #include <QUdpSocket>
@@ -16,8 +15,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , is_running(false)
-    , config(ConfigManager::getInstance())     // 配置类静态实例引用
-    , audioTimer(new QTimer(this))
+    //, audioTimer(new QTimer(this))
 {
     ui->setupUi(this);
 
@@ -31,9 +29,10 @@ void MainWindow::on_launchButton_clicked()
 {
     if(is_running){
         ui->debug->append("\n结束\n");
+
         is_running = false;
-        audioTimer->stop();
         ui->launchButton->setText("启动!");
+        emit __stop__();
     }
     else{
         if(ui->ApiKeyInput->text().isEmpty() ||
@@ -46,51 +45,54 @@ void MainWindow::on_launchButton_clicked()
         }
 
         applyUiToConfig();                  // 将UI修改应用到管理类
-        config.loadManagerToFile();         // 将管理类里面的配置写入配置文件
+        config.loadManagerToFile();         // 将管理类里面的配置写入配置文件（注意！要先更新配置再启动）
         is_running = true;
+
+        emit __start__();                   // 启动  （注意！要先更新配置再启动）
+
         ui->launchButton->setText("停止");
         ui->debug->clear();
         ui->debug->append("程序启动\n正在使用设备"+config.getDevice());
     }
 }
 
-void MainWindow::sendToOSC(const QString& text)
-{
-    const QString oscAddress = "/chatbox/input";
-    const QHostAddress targetHost(config.getTargetHost());
-    const quint16 targetPort = config.getTargetPort();
+// void MainWindow::sendToOSC(const QString& text)
+// {
+//     const QString oscAddress = "/chatbox/input";
+//     const QHostAddress targetHost(config.getTargetHost());
+//     const quint16 targetPort = config.getTargetPort();
 
-    // OSC协议格式：地址 + 类型标签 + 数据）
-    QByteArray oscData;
+//     // OSC协议格式：地址 + 类型标签 + 数据）
+//     QByteArray oscData;
 
-    // 地址
-    oscData.append(oscAddress.toUtf8());
-    oscData.append('\0');   // 类型标签结束符
+//     // 地址
+//     oscData.append(oscAddress.toUtf8());
+//     oscData.append('\0');   // 类型标签结束符
 
-    // OSC协议要求补齐4字节对齐
-    while (oscData.size() % 4 != 0) {
-        oscData.append('\0');
-    }
+//     // OSC协议要求补齐4字节对齐
+//     while (oscData.size() % 4 != 0) {
+//         oscData.append('\0');
+//     }
 
-    // 类型标签,",sT" 表示：字符串 + 布尔值true
-    oscData.append(",sT");
-    oscData.append('\0');  // 类型标签结束符
-    while (oscData.size() % 4 != 0) {
-        oscData.append('\0');
-    }
+//     // 类型标签,",sT" 表示：字符串 + 布尔值true
+//     oscData.append(",sT");
+//     oscData.append('\0');  // 类型标签结束符
+//     while (oscData.size() % 4 != 0) {
+//         oscData.append('\0');
+//     }
 
-    // 字符串数据,null结尾，4字节对齐
-    QByteArray textBytes = text.toUtf8();
-    oscData.append(textBytes);
-    oscData.append('\0');  // 字符串结束符
-    while (oscData.size() % 4 != 0) {
-        oscData.append('\0');
-    }
+//     // 字符串数据,null结尾，4字节对齐
+//     QByteArray textBytes = text.toUtf8();
+//     oscData.append(textBytes);
+//     oscData.append('\0');  // 字符串结束符
+//     while (oscData.size() % 4 != 0) {
+//         oscData.append('\0');
+//     }
 
-    // 发送UDP数据
-    QUdpSocket udpSocket;
-    qint64 bytesSent = udpSocket.writeDatagram(oscData, targetHost, targetPort);
-}
+//     // 发送UDP数据
+//     QUdpSocket udpSocket;
+//     qint64 bytesSent = udpSocket.writeDatagram(oscData, targetHost, targetPort);
+// }
 
 // 从ConfigManager初始化UI
 void MainWindow::applyConfigToUi(){
@@ -133,6 +135,7 @@ void MainWindow::applyUiToConfig(){
 void MainWindow::onError(const QString& errorMessage){
     ui->debug->append("[ERROR]" + errorMessage);
 }
+
 void MainWindow::onDebug(const QString& debugMessage){
     ui->debug->append(debugMessage);
 }

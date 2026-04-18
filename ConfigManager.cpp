@@ -9,6 +9,11 @@ QMutex ConfigManager::m_globalMutex;
 
 ConfigManager::ConfigManager(QObject *parent)
     : QObject(parent)
+    , m_vadThreshold(0.015)
+    , m_minSilenceDuration(800)
+    , m_targetPort(9000)
+    , m_targetHost("127.0.0.1")
+    , sampleRate(16000)
 {}
 
 ConfigManager& ConfigManager::getInstance() {
@@ -32,7 +37,7 @@ void ConfigManager::loadFileToManager() {
     m_xunFeiApiSecret    = settings.value("xunFeiApiSecret", "").toString();
     m_xunFeiApiKey       = settings.value("xunFeiApiKey", "").toString();
     m_DeepseekApiKey     = settings.value("DeepseekApiKey", "").toString();
-    m_targetLanguage     = settings.value("targetLanguage", "").toString();
+    m_targetLanguage     = settings.value("targetLanguage", "英语(EN)").toString();
     m_device             = settings.value("device", "").toString();
 }
 
@@ -147,7 +152,6 @@ void ConfigManager::setDevice(const QString& value) {
     QMutexLocker locker(&m_globalMutex);
     m_device = value;
 }
-int ConfigManager::getSampleRate() {
-    QMutexLocker locker(&m_globalMutex);
+int ConfigManager::getSampleRate() const{
     return 16000;
 }

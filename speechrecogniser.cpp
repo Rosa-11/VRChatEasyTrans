@@ -1,7 +1,6 @@
 #include "speechrecogniser.h"
 #include "ConfigManager.h"
 #include <QUrl>
-#include <QThread>
 #include <QUrlQuery>
 #include <QDateTime>
 #include <QCryptographicHash>
@@ -26,7 +25,7 @@ SpeechRecogniser::~SpeechRecogniser()
 
 void SpeechRecogniser::initialize()
 {
-    qDebug() << "SpeechRecogniser initializing in thread:" << QThread::currentThreadId();
+    qDebug() << "\nSpeechRecogniser initialize";
 
     ConfigManager &cfg = ConfigManager::getInstance();
     m_appId = cfg.getXunFeiAppId();
@@ -40,9 +39,6 @@ void SpeechRecogniser::initialize()
     connect(m_webSocket, &QWebSocket::disconnected, this, &SpeechRecogniser::onDisconnected);
     connect(m_webSocket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
             this, &SpeechRecogniser::onError);
-
-    m_heartbeatTimer = new QTimer(this);
-    m_heartbeatTimer->setInterval(30000);
 
     m_chunkTimer = new QTimer(this);
     m_chunkTimer->setSingleShot(true);
@@ -126,11 +122,10 @@ QString SpeechRecogniser::generateAuthUrl()
 
 void SpeechRecogniser::onConnected()
 {
-    qDebug() << "WebSocket connected. Thread:" << QThread::currentThreadId();
+    qDebug() << "WebSocket connected.";
     m_isConnected = true;
     emit socketStateChanged("Connected");
 
-    m_heartbeatTimer->start();
     sendFirstFrame();
 
     if (!m_pendingChunks.isEmpty() && !m_chunkTimer->isActive()) {
@@ -282,7 +277,6 @@ void SpeechRecogniser::onDisconnected()
 {
     m_isConnected = false;
     m_firstFrameSent = false;
-    m_heartbeatTimer->stop();
     emit socketStateChanged("Disconnected");
 
     // 非正常完成（如网络断开）且尚未处理完成时，报告错误

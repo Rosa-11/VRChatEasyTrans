@@ -15,7 +15,6 @@ private:
     // 全局唯一静态锁
     static QMutex m_globalMutex;
 
-    // 所有成员变量全部私有化！禁止直接访问！
     double m_vadThreshold;
     int    m_minSilenceDuration;
     int    m_targetPort;
@@ -71,7 +70,7 @@ public:
     QString getDevice() const;
     void setDevice(const QString& value);
 
-    int getSampleRate();
+    int getSampleRate() const;
 };
 
 #endif

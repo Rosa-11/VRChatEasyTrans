@@ -39,7 +39,6 @@ private:
     void sendAudioFrame(const QByteArray &audioData, int status);
 
     QWebSocket *m_webSocket = nullptr;
-    QTimer *m_heartbeatTimer = nullptr;
     QTimer *m_chunkTimer = nullptr;
 
     QString m_appId;
@@ -47,8 +46,8 @@ private:
     QString m_apiSecret;
     QString m_host = "iat-api.xfyun.cn";
     QString m_path = "/v2/iat";
-    int m_sampleRate = 16000;
-    int m_chunkSize = 1280;
+    int m_sampleRate = 16000;                   // 采样率
+    int m_chunkSize = 1280;                     // 分片大小
 
     bool m_isConnected = false;
     bool m_isFinishing = false;

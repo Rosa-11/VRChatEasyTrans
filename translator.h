@@ -16,6 +16,7 @@ public:
 
 public slots:
     void translateTextAsync(const QString& text); // 翻译完成信号对应的槽函数
+    void initialize();
 
 signals:
     void translationFinished(const QString& translatedText);    ////////////////
@@ -31,6 +32,9 @@ private:
 
     QNetworkAccessManager* m_networkManager = nullptr;
     bool m_asyncMode = false;
+
+    QString targetLanguage = "";
+    QString apiKey = "";
 };
 
 #endif // TRANSLATOR_H

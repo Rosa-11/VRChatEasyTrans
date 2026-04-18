@@ -32,6 +32,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(VRChatEasyTrans-AI
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+        solooscbroadcaster.h solooscbroadcaster.cpp
     )
 
     qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})

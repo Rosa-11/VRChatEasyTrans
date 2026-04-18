@@ -22,20 +22,20 @@ private slots:
 private:
     Ui::MainWindow *ui;
 
-    ConfigManager &config;
+    ConfigManager &config = ConfigManager::getInstance();
 
     bool is_running;
-    QTimer* audioTimer;
+    //QTimer* audioTimer;
 
-    void sendToOSC(const QString& text);  // 发送文字到VRChat
+    //void sendToOSC(const QString& text);  // 发送文字到VRChat
 
     void applyConfigToUi();
     void applyUiToConfig();
 
 
 signals:
-    void startRecordingRequested();
-    void stopRecordingRequested();
+    void __start__();
+    void __stop__();
 
 public:
     MainWindow(QWidget *parent = nullptr);

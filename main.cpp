@@ -23,40 +23,39 @@ int main(int argc, char *argv[])
         }
     }
 
-    ConfigManager::getInstance().loadFileToManager();
+    // 必须先创建 QApplication，因为 ConfigManager 需要访问 applicationDirPath()
+    ConfigManager::getInstance().loadFileToManager();   //懒汉模式初始化 ConfigManager
 
-    // 2. 创建主窗口（UI线程）
     MainWindow w;
 
-    // 3. 创建音频采集模块（主线程，需要访问硬件）
+    // 其他类必须在 ConfigManager 初始化之后创建
     AudioCapture audioCapture;
-    if (!audioCapture.initialize()) {
-        return -1;
-    }
 
-    // 4. 创建语音识别模块（子线程）
     QThread recogniserThread;
     SpeechRecogniser recogniser;
     recogniser.moveToThread(&recogniserThread);
 
-    // 5. 创建翻译模块（子线程，可与识别共用或独立线程）
     QThread translatorThread;
     Translator translator;
     translator.moveToThread(&translatorThread);
 
-    // ========== 信号槽连接 ==========
+    // ========== 信号与槽 ==========
 
-    // 5.1 音频采集 → 语音识别
+    // 音频采集 → 语音识别
     QObject::connect(&audioCapture, &AudioCapture::audioDataReady,
                      &recogniser, &SpeechRecogniser::processAudioData);
     QObject::connect(&audioCapture, &AudioCapture::recordingFinished,
                      &recogniser, &SpeechRecogniser::finishRecognition);
 
-    // 5.2 语音识别 → 翻译（异步）
+    // 语音识别 → 翻译
     QObject::connect(&recogniser, &SpeechRecogniser::recognitionCompleted,
                      &translator, &Translator::translateTextAsync);
 
-    // 5.4 错误处理（可选）
+    // 翻译 → OSC
+    QObject::connect(&translator, &Translator::translationFinished,
+                     &translator, &Translator::translateTextAsync);
+
+    // 错误处理
     QObject::connect(&audioCapture, &AudioCapture::error,
                      &w, &MainWindow::onError);
     QObject::connect(&recogniser, &SpeechRecogniser::error,
@@ -64,23 +63,34 @@ int main(int argc, char *argv[])
     QObject::connect(&translator, &Translator::translationError,
                      &w, &MainWindow::onError);
 
-    QObject::connect(&w, &MainWindow::startRecordingRequested,
+    QObject::connect(&audioCapture, &AudioCapture::debug,
+                     &w, &MainWindow::onDebug);
+    QObject::connect(&recogniser, &SpeechRecogniser::debug,
+                     &w, &MainWindow::onDebug);
+    QObject::connect(&translator, &Translator::debug,
+                     &w, &MainWindow::onDebug);
+
+    // 启动时初始化/更新配置到线程
+    QObject::connect(&w, &MainWindow::__start__,
                      &audioCapture, &AudioCapture::start);
-    QObject::connect(&w, &MainWindow::stopRecordingRequested,
+    QObject::connect(&w, &MainWindow::__start__,
+                     &recogniser, &SpeechRecogniser::initialize);
+    QObject::connect(&w, &MainWindow::__start__,
+                     &translator, &Translator::initialize);
+
+    QObject::connect(&w, &MainWindow::__stop__,
                      &audioCapture, &AudioCapture::stop);
 
-    // 6. 启动子线程并初始化工作对象
+    // 启动子线程并初始化工作对象
     recogniserThread.start();
     translatorThread.start();
 
     // 在工作线程中执行初始化（确保对象在正确线程中创建资源）
-    QTimer::singleShot(0, &recogniser, &SpeechRecogniser::initialize);
-    // Translator 无需显式初始化，构造时已创建 NetworkAccessManager
+    //QTimer::singleShot(0, &recogniser, &SpeechRecogniser::initialize);
 
-    // 7. 显示窗口
     w.show();
 
-    // 8. 程序退出时清理
+    // 程序退出时清理
     QObject::connect(&a, &QCoreApplication::aboutToQuit, [&]() {
         recogniserThread.quit();
         translatorThread.quit();

@@ -25,7 +25,7 @@ Translator::Translator(QObject *parent)
 
 void Translator::initialize()
 {
-    qDebug() << "\nTranslator initialize";
+    qDebug() << "Translator initialize";
     targetLanguage = ConfigManager::getInstance().getTargetLanguage();
     apiKey = ConfigManager::getInstance().getDeepseekApiKey();
 }

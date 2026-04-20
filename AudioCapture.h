@@ -10,26 +10,6 @@
 class AudioCapture : public QObject
 {
     Q_OBJECT
-public:
-    explicit AudioCapture(QObject *parent = nullptr);
-    ~AudioCapture();
-
-    bool initialize();
-    void start();
-    void stop();
-
-signals:
-    void audioDataReady(const QByteArray &pcmData);   // 实时音频数据（仅人声部分）
-    void recordingStarted();
-    void recordingFinished();                         // 静音超时后结束
-    void vadStateChanged(bool isSpeaking);
-    void error(const QString &message);
-    void debug(const QString& debugMessage);
-
-private slots:
-    void onAudioDataReady();
-    void checkSilence();
-
 private:
     void processVAD(const QByteArray &data);
     float calculateRMS(const QByteArray &data);
@@ -50,6 +30,29 @@ private:
     // 音频缓冲（用于 VAD 检测）
     QByteArray m_buffer;
     static constexpr int BUFFER_SIZE = 3200;    // 100ms 16k 16bit 数据量
+
+public:
+    explicit AudioCapture(QObject *parent = nullptr);
+    ~AudioCapture();
+
+public slots:
+    void initializeAndStart();
+    void stop();
+
+private slots:
+    void start();               // 由initialize()调用
+
+    void onAudioDataReady();
+    void checkSilence();
+
+signals:
+
+    void audioDataReady(const QByteArray &pcmData);   // 实时音频数据（仅人声部分）
+    void recordingStarted();
+    void recordingFinished();                         // 静音超时后结束
+    void vadStateChanged(bool isSpeaking);
+    void error(const QString &message);
+    void debug(const QString& debugMessage);
 };
 
 #endif // AUDIOCAPTURE_H

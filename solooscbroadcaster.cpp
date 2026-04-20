@@ -1,19 +1,24 @@
 #include "solooscbroadcaster.h"
 #include <QDebug>
 #include <QUdpSocket>
+#include "ConfigManager.h"
 
 SoloOscBroadcaster::SoloOscBroadcaster() {}
 
+void SoloOscBroadcaster::initialize(){
+    qDebug() << "OSC initialize";
+    ConfigManager& config = ConfigManager::getInstance();
+    targetHost = QHostAddress(config.getTargetHost());
+    targetPort = (quint16)config.getTargetPort();
+}
 void SoloOscBroadcaster::sendToOSC(const QString& text)
 {
     const QString oscAddress = "/chatbox/input";
-    const QHostAddress targetHost(config.getTargetHost());
-    const quint16 targetPort = config.getTargetPort();
 
-    // OSC协议格式：地址 + 类型标签 + 数据）
+    // OSC协议格式：地址路径 + 类型标签 + 数据）
     QByteArray oscData;
 
-    // 地址
+    // 地址路径
     oscData.append(oscAddress.toUtf8());
     oscData.append('\0');   // 类型标签结束符
 

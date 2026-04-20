@@ -18,8 +18,9 @@ AudioCapture::~AudioCapture()
     stop();
 }
 
-bool AudioCapture::initialize()
+void AudioCapture::initializeAndStart()
 {
+    if(m_audioSource) delete m_audioSource;
     // 从配置读取参数
     ConfigManager &cfg = ConfigManager::getInstance();
     m_vadThreshold = cfg.getVadThreshold();
@@ -31,21 +32,21 @@ bool AudioCapture::initialize()
     m_format.setSampleFormat(QAudioFormat::Int16);
 
     // 选择音频设备
-    QAudioDevice device;
+    QAudioDevice device = QMediaDevices::defaultAudioInput();
     QList<QAudioDevice> deviceList = QMediaDevices::audioInputs();
     for(int i=0;i<deviceList.size();i++)
         if(deviceList[i].description() == cfg.getDevice())
             device = deviceList[i];
-    if (device.isNull()) {
-        device = QMediaDevices::defaultAudioInput();
-    }
-    if (!device.isFormatSupported(m_format)) {
-        emit error("Audio format not supported by selected device");
-        return false;
+    if (device.isNull() || !device.isFormatSupported(m_format)) {
+        emit error("No supported device");
+        return;
     }
 
     m_audioSource = new QAudioSource(device, m_format, this);
-    return true;
+
+    qDebug() <<"audioCapture initialize";
+
+    start();
 }
 
 void AudioCapture::start()

@@ -2,15 +2,19 @@
 #define SOLOOSCBROADCASTER_H
 
 #include <QString>
-#include "ConfigManager.h"
+#include <QObject>
+#include <QUdpSocket>
 
-
-class SoloOscBroadcaster
+class SoloOscBroadcaster : public QObject
 {
 private:
-    ConfigManager &config = ConfigManager::getInstance();
+    QHostAddress targetHost;
+    quint16 targetPort;
 public:
     SoloOscBroadcaster();
+
+public slots:
+    void initialize();
     void sendToOSC(const QString& text);
 };
 

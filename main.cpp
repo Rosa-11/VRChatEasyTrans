@@ -3,6 +3,7 @@
 #include "AudioCapture.h"
 #include "speechrecogniser.h"
 #include "translator.h"
+#include "solooscbroadcaster.h"
 
 #include <QApplication>
 #include <QLocale>
@@ -39,6 +40,10 @@ int main(int argc, char *argv[])
     Translator translator;
     translator.moveToThread(&translatorThread);
 
+    QThread oscThread;
+    SoloOscBroadcaster oscBroadcaster;
+    oscBroadcaster.moveToThread(&translatorThread);
+
     // ========== 信号与槽 ==========
 
     // 音频采集 → 语音识别
@@ -53,7 +58,7 @@ int main(int argc, char *argv[])
 
     // 翻译 → OSC
     QObject::connect(&translator, &Translator::translationFinished,
-                     &translator, &Translator::translateTextAsync);
+                     &oscBroadcaster, &SoloOscBroadcaster::sendToOSC);
 
     // 错误处理
     QObject::connect(&audioCapture, &AudioCapture::error,
@@ -70,13 +75,16 @@ int main(int argc, char *argv[])
     QObject::connect(&translator, &Translator::debug,
                      &w, &MainWindow::onDebug);
 
-    // 启动时初始化/更新配置到线程
+    // 启动时初始化/更新配置到各线程，AudioCapture初始化后调用start
     QObject::connect(&w, &MainWindow::__start__,
-                     &audioCapture, &AudioCapture::start);
+                     &audioCapture, &AudioCapture::initializeAndStart);
     QObject::connect(&w, &MainWindow::__start__,
                      &recogniser, &SpeechRecogniser::initialize);
     QObject::connect(&w, &MainWindow::__start__,
                      &translator, &Translator::initialize);
+    QObject::connect(&w, &MainWindow::__start__,
+                     &oscBroadcaster, &SoloOscBroadcaster::initialize);
+
 
     QObject::connect(&w, &MainWindow::__stop__,
                      &audioCapture, &AudioCapture::stop);
@@ -84,6 +92,7 @@ int main(int argc, char *argv[])
     // 启动子线程并初始化工作对象
     recogniserThread.start();
     translatorThread.start();
+    oscThread.start();
 
     // 在工作线程中执行初始化（确保对象在正确线程中创建资源）
     //QTimer::singleShot(0, &recogniser, &SpeechRecogniser::initialize);
@@ -94,8 +103,10 @@ int main(int argc, char *argv[])
     QObject::connect(&a, &QCoreApplication::aboutToQuit, [&]() {
         recogniserThread.quit();
         translatorThread.quit();
+        oscThread.quit();
         recogniserThread.wait();
         translatorThread.wait();
+        oscThread.wait();
     });
 
     return a.exec();

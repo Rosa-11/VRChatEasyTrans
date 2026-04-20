@@ -15,8 +15,8 @@ public:
     explicit Translator(QObject *parent = nullptr);
 
 public slots:
-    void translateTextAsync(const QString& text); // 翻译完成信号对应的槽函数
     void initialize();
+    void translateTextAsync(const QString& text); // 翻译完成信号对应的槽函数
 
 signals:
     void translationFinished(const QString& translatedText);    ////////////////

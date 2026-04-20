@@ -25,7 +25,7 @@ SpeechRecogniser::~SpeechRecogniser()
 
 void SpeechRecogniser::initialize()
 {
-    qDebug() << "\nSpeechRecogniser initialize";
+    qDebug() << "SpeechRecogniser initialize";
 
     ConfigManager &cfg = ConfigManager::getInstance();
     m_appId = cfg.getXunFeiAppId();

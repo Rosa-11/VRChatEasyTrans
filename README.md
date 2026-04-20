@@ -109,6 +109,7 @@ src/
 ```
 
 时序图
+```mermaid
 sequenceDiagram
     AudioCapture->>SpeechRecogniser: audioDataReady(pcm)
     AudioCapture->>SpeechRecogniser: recordingFinished()
@@ -117,20 +118,20 @@ sequenceDiagram
     
     Translator->>SoloOscBroadcaster: translationFinished(text)
     
-    SoloOscBroadcaster->>OSC接收端: UDP发送OSC报文
+    SoloOscBroadcaster->>VRChat: UDP发送OSC报文
+```
 
 计划实现的功能（优先级由高到低）
 
 1. 可配置的接入除中英文以外其他语言的语音识别API的方案
-2. 复用一个长连接（需要加心跳包维持连接）
+2. 讯飞星火和 Deepseek 的websocket连接复用（两次调用之间加心跳包维持连接）
 3. 接入可识别中文方言的API
 
 
 # 🤝 参与贡献
 
 本项目欢迎各种形式的贡献！
-如果你愿意为本项目贡献你的代码，请优先完成并提交上面提到的计划实现的功能，谢谢！
-本人是学生平时比较忙，如果开启 pull request 很久没有回复可以发送邮件提醒，请谅解👉🏻👈🏻
+本人是学生平时比较忙，如果开启 pull request 很久没有合并或评论可以发送邮件至1375803462@qq.com提醒
 
 
 # 📞 支持与反馈
@@ -138,5 +139,6 @@ sequenceDiagram
 如果您遇到问题或有建议：
 
 1. 查看或提交新的 Issues
-2. 发送邮件至: 1375803462@qq.com
+2. 邮箱: 1375803462@qq.com
+3. VRChat: 影沫Rosa
 ---

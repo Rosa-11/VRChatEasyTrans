@@ -108,6 +108,17 @@ src/
 └── ConfigManager/        # 配置管理（单例加锁访问）
 ```
 
+时序图
+sequenceDiagram
+    AudioCapture->>SpeechRecogniser: audioDataReady(pcm)
+    AudioCapture->>SpeechRecogniser: recordingFinished()
+    
+    SpeechRecogniser->>Translator: recognitionCompleted(text)
+    
+    Translator->>SoloOscBroadcaster: translationFinished(text)
+    
+    SoloOscBroadcaster->>OSC接收端: UDP发送OSC报文
+
 计划实现的功能（优先级由高到低）
 
 1. 可配置的接入除中英文以外其他语言的语音识别API的方案

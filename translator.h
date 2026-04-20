@@ -11,6 +11,19 @@ class Translator : public QObject
 {
     Q_OBJECT
 
+private:
+    QNetworkAccessManager* m_networkManager = nullptr;
+    bool m_asyncMode = false;
+
+    QString targetLanguage = "";
+    QString apiKey = "";
+
+    QString buildRequestJson(const QString& text, const QString& targetLanguage) const;
+    QString parseTranslationResponse(const QByteArray& responseData) const;
+
+private slots:
+    void onReplyFinished(QNetworkReply* reply);
+
 public:
     explicit Translator(QObject *parent = nullptr);
 
@@ -22,19 +35,6 @@ signals:
     void translationFinished(const QString& translatedText);    ////////////////
     void translationError(const QString& errorMessage);
     void debug(const QString& debugMessage);
-
-private slots:
-    void onReplyFinished(QNetworkReply* reply);
-
-private:
-    QString buildRequestJson(const QString& text, const QString& targetLanguage) const;
-    QString parseTranslationResponse(const QByteArray& responseData) const;
-
-    QNetworkAccessManager* m_networkManager = nullptr;
-    bool m_asyncMode = false;
-
-    QString targetLanguage = "";
-    QString apiKey = "";
 };
 
 #endif // TRANSLATOR_H

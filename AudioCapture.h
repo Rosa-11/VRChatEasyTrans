@@ -31,6 +31,12 @@ private:
     QByteArray m_buffer;
     static constexpr int BUFFER_SIZE = 3200;    // 100ms 16k 16bit 数据量
 
+private slots:
+    void start();               // 由initialize()调用
+
+    void onAudioDataReady();
+    void checkSilence();
+
 public:
     explicit AudioCapture(QObject *parent = nullptr);
     ~AudioCapture();
@@ -38,12 +44,6 @@ public:
 public slots:
     void initializeAndStart();
     void stop();
-
-private slots:
-    void start();               // 由initialize()调用
-
-    void onAudioDataReady();
-    void checkSilence();
 
 signals:
 

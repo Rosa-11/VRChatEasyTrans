@@ -16,26 +16,18 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
-private slots:
-    void on_launchButton_clicked();
-
 private:
     Ui::MainWindow *ui;
 
     ConfigManager &config = ConfigManager::getInstance();
 
     bool is_running;
-    //QTimer* audioTimer;
-
-    //void sendToOSC(const QString& text);  // 发送文字到VRChat
 
     void applyConfigToUi();
     void applyUiToConfig();
 
-
-signals:
-    void __start__();
-    void __stop__();
+private slots:
+    void on_launchButton_clicked();
 
 public:
     MainWindow(QWidget *parent = nullptr);
@@ -43,6 +35,10 @@ public:
 public slots:
     void onError(const QString& errorMessage);
     void onDebug(const QString& debugMessage);
+
+signals:
+    void __start__();
+    void __stop__();
 };
 
 #endif // MAINWINDOW_H

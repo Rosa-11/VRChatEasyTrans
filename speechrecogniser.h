@@ -10,34 +10,8 @@
 class SpeechRecogniser : public QObject
 {
     Q_OBJECT
-public:
-    explicit SpeechRecogniser(QObject *parent = nullptr);
-    ~SpeechRecogniser();
-
-public slots:
-    void initialize();
-    void processAudioData(const QByteArray &data);
-    void finishRecognition();
-
-signals:
-    void recognitionCompleted(const QString &finalText);
-    void recognitionPartial(const QString &partialText);
-    void socketStateChanged(const QString &state);
-    void error(const QString &message);
-    void debug(const QString &debugMessage);
-
-private slots:
-    void onConnected();
-    void onTextMessageReceived(const QString &message);
-    void onDisconnected();
-    void onError(QAbstractSocket::SocketError error);
-    void sendNextChunk();
 
 private:
-    QString generateAuthUrl();
-    void sendFirstFrame();
-    void sendAudioFrame(const QByteArray &audioData, int status);
-
     QWebSocket *m_webSocket = nullptr;
     QTimer *m_chunkTimer = nullptr;
 
@@ -60,6 +34,33 @@ private:
     int m_currentOffset = 0;
 
     QString m_partialText;
+
+    QString generateAuthUrl();
+    void sendFirstFrame();
+    void sendAudioFrame(const QByteArray &audioData, int status);
+
+private slots:
+    void onConnected();
+    void onTextMessageReceived(const QString &message);
+    void onDisconnected();
+    void onError(QAbstractSocket::SocketError error);
+    void sendNextChunk();
+
+public:
+    explicit SpeechRecogniser(QObject *parent = nullptr);
+    ~SpeechRecogniser();
+
+public slots:
+    void initialize();
+    void processAudioData(const QByteArray &data);
+    void finishRecognition();
+
+signals:
+    void recognitionCompleted(const QString &finalText);
+    void recognitionPartial(const QString &partialText);
+    void socketStateChanged(const QString &state);
+    void error(const QString &message);
+    void debug(const QString &debugMessage);
 };
 
 #endif // SPEECHRECOGNISER_H

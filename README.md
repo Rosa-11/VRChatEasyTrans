@@ -108,7 +108,8 @@ src/
 └── ConfigManager/        # 配置管理（单例加锁访问）
 ```
 
-时序图
+### 时序图
+整体流程
 ```mermaid
 sequenceDiagram
     AudioCapture->>SpeechRecogniser: audioDataReady(pcm)
@@ -119,6 +120,23 @@ sequenceDiagram
     Translator->>SoloOscBroadcaster: translationFinished(text)
     
     SoloOscBroadcaster->>VRChat: UDP发送OSC报文
+```
+语音检测与识别流程：
+```mermaid
+sequenceDiagram
+    AudioCapture->>SpeechRecogniser: 检测到人声
+    AudioCapture->>SpeechRecogniser: audioDataReady
+    SpeechRecogniser->>讯飞服务器: 连接
+    讯飞服务器-->>SpeechRecogniser: 连接成功
+    SpeechRecogniser->>讯飞服务器: 首帧
+    SpeechRecogniser->>讯飞服务器: 音频数据(status=1)
+    AudioCapture->>SpeechRecogniser: 持续发送音频
+    SpeechRecogniser->>讯飞服务器: 音频数据(status=1)
+    AudioCapture->>SpeechRecogniser: 静音超时
+    AudioCapture->>SpeechRecogniser: recordingFinished
+    SpeechRecogniser->>讯飞服务器: 结束帧(status=2)
+    讯飞服务器-->>SpeechRecogniser: 识别结果
+    SpeechRecogniser->>AudioCapture: recognitionCompleted
 ```
 
 计划实现的功能（优先级由高到低）

@@ -47,7 +47,7 @@ public slots:
 
 signals:
 
-    void audioDataReady(const QByteArray &pcmData);   // 实时音频数据（仅人声部分）
+    void audioDataReady(const QByteArray &pcmData);   // 实时音频数据
     void recordingStarted();
     void recordingFinished();                         // 静音超时后结束
     void vadStateChanged(bool isSpeaking);

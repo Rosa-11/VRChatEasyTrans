@@ -248,7 +248,7 @@ void SpeechRecogniser::onTextMessageReceived(const QString &message)
     if (!text.isEmpty()) {
         if (status == 1) {
             m_partialText += text;
-            emit recognitionPartial(m_partialText);
+            //emit recognitionPartial(m_partialText);
         } else if (status == 2) {
             m_partialText += text;
             QString finalText = m_partialText.trimmed();

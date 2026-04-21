@@ -57,7 +57,7 @@ public slots:
 
 signals:
     void recognitionCompleted(const QString &finalText);
-    void recognitionPartial(const QString &partialText);
+    //void recognitionPartial(const QString &partialText);
     void socketStateChanged(const QString &state);
     void error(const QString &message);
     void debug(const QString &debugMessage);

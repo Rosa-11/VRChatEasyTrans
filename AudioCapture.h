@@ -59,7 +59,7 @@ private:
     // ─── 常量 ───────────────────────────────────────────────
     static constexpr int FRAME_MS   = 40;   // 每帧时长（毫秒）
     static constexpr int FRAME_SIZE = 1280; // 每帧字节数（40ms × 16kHz × 16bit × 1ch = 1280 B）
-    static constexpr int MIN_FRAMES_TO_TRIGGER = 3; // 触发识别所需最少帧数（3帧 = 120ms）
+    static constexpr int MIN_FRAMES_TO_TRIGGER = 10; // 触发识别所需最少帧数（10帧 = 400ms）
 
     // 【修复】不在成员变量处直接计算，而是在 initialize() 里根据配置动态赋值
     // 原写法 `= m_minSilenceDurationMs / FRAME_MS` 在构造时就算好了，

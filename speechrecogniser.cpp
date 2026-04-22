@@ -396,6 +396,7 @@ void SpeechRecogniser::onTextMessageReceived(const QString &message)
             emit recognitionCompleted(finalText);
             emit debug(QString("SpeechRecogniser: final result: %1").arg(finalText));
         } else {
+            emit recognitionCompleted("未识别到文本");
             emit debug("SpeechRecogniser: recognition completed, no speech detected");
         }
 

@@ -8,12 +8,12 @@
 #include <QApplication>
 #include <QLocale>
 #include <QTranslator>
-#include <QMediaDevices>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
+    // ─── 国际化翻译文件加载 ────────────────────────────────────────────────
     QTranslator qTranslator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();
     for (const QString &locale : uiLanguages) {
@@ -24,86 +24,89 @@ int main(int argc, char *argv[])
         }
     }
 
-    // 必须先创建 QApplication，因为 ConfigManager 需要访问 applicationDirPath()
-    ConfigManager::getInstance().loadFileToManager();   //懒汉模式初始化 ConfigManager
+    // ─── 配置管理器初始化 ──────────────────────────────────────────────────
+    // 必须在 QApplication 创建之后调用（需要 applicationDirPath()）
+    ConfigManager::getInstance().loadFileToManager();
 
+    // ─── 主窗口 ────────────────────────────────────────────────────────────
     MainWindow w;
 
-    // 其他类必须在 ConfigManager 初始化之后创建
+    // ─── 工作对象创建 ──────────────────────────────────────────────────────
+    // AudioCapture 留在主线程（QAudioSource 在主线程中最稳定）
     AudioCapture audioCapture;
 
+    // SpeechRecogniser 独立线程：WebSocket 收发不阻塞主线程
     QThread recogniserThread;
     SpeechRecogniser recogniser;
     recogniser.moveToThread(&recogniserThread);
 
+    // Translator 独立线程：HTTP 请求不阻塞主线程
     QThread translatorThread;
     Translator translator;
     translator.moveToThread(&translatorThread);
 
+    // OscBroadcaster 独立线程：UDP 发送不阻塞翻译线程
     QThread oscThread;
     SoloOscBroadcaster oscBroadcaster;
-    oscBroadcaster.moveToThread(&translatorThread);
+    // 【修复】原代码写的是 moveToThread(&translatorThread)，
+    // 导致 oscThread 是个空线程（没有任何对象在上面运行），
+    // 且 oscBroadcaster 和 translator 共用同一个线程，UDP 发送会阻塞翻译。
+    oscBroadcaster.moveToThread(&oscThread);
 
-    // ========== 信号与槽 ==========
+    // ─── 信号与槽连接 ──────────────────────────────────────────────────────
 
-    // 音频采集 → 语音识别
-    QObject::connect(&audioCapture, &AudioCapture::audioDataReady,
-                     &recogniser, &SpeechRecogniser::processAudioData);
-    QObject::connect(&audioCapture, &AudioCapture::recordingFinished,
-                     &recogniser, &SpeechRecogniser::finishRecognition);
+    // 音频采集 → 语音识别（跨线程，自动 QueuedConnection）
+    QObject::connect(&audioCapture, &AudioCapture::startRecognition,
+                     &recogniser,   &SpeechRecogniser::onStartRecognition);
+    QObject::connect(&audioCapture, &AudioCapture::sendAudioChunk,
+                     &recogniser,   &SpeechRecogniser::onSendAudioChunk);
+    QObject::connect(&audioCapture, &AudioCapture::stopRecognition,
+                     &recogniser,   &SpeechRecogniser::onStopRecognition);
 
-    // 语音识别 → 翻译
-    QObject::connect(&recogniser, &SpeechRecogniser::recognitionCompleted,
-                     &translator, &Translator::translateTextAsync);
+    // 语音识别 → 翻译（跨线程）
+    QObject::connect(&recogniser,  &SpeechRecogniser::recognitionCompleted,
+                     &translator,  &Translator::translateTextAsync);
 
-    // 翻译 → OSC
-    QObject::connect(&translator, &Translator::translationFinished,
+    // 翻译 → OSC 广播（跨线程）
+    QObject::connect(&translator,    &Translator::translationFinished,
                      &oscBroadcaster, &SoloOscBroadcaster::sendToOSC);
 
-    // 错误处理
-    QObject::connect(&audioCapture, &AudioCapture::error,
-                     &w, &MainWindow::onError);
-    QObject::connect(&recogniser, &SpeechRecogniser::error,
-                     &w, &MainWindow::onError);
-    QObject::connect(&translator, &Translator::translationError,
-                     &w, &MainWindow::onError);
+    // 错误信息 → 主窗口显示
+    QObject::connect(&audioCapture, &AudioCapture::error,  &w, &MainWindow::onError);
+    QObject::connect(&recogniser,   &SpeechRecogniser::error, &w, &MainWindow::onError);
+    QObject::connect(&translator,   &Translator::translationError, &w, &MainWindow::onError);
 
-    QObject::connect(&audioCapture, &AudioCapture::debug,
-                     &w, &MainWindow::onDebug);
-    QObject::connect(&recogniser, &SpeechRecogniser::debug,
-                     &w, &MainWindow::onDebug);
-    QObject::connect(&translator, &Translator::debug,
-                     &w, &MainWindow::onDebug);
+    // 调试信息 → 主窗口显示
+    QObject::connect(&audioCapture, &AudioCapture::debug,  &w, &MainWindow::onDebug);
+    QObject::connect(&recogniser,   &SpeechRecogniser::debug, &w, &MainWindow::onDebug);
+    QObject::connect(&translator,   &Translator::debug,    &w, &MainWindow::onDebug);
 
-    // 启动时初始化/更新配置到各线程，AudioCapture初始化后调用start
-    QObject::connect(&w, &MainWindow::__start__,
-                     &audioCapture, &AudioCapture::initializeAndStart);
-    QObject::connect(&w, &MainWindow::__start__,
-                     &recogniser, &SpeechRecogniser::initialize);
-    QObject::connect(&w, &MainWindow::__start__,
-                     &translator, &Translator::initialize);
-    QObject::connect(&w, &MainWindow::__start__,
-                     &oscBroadcaster, &SoloOscBroadcaster::initialize);
+    // 主窗口启动按钮 → 各模块初始化
+    // 注意：initialize() 必须在各自所在线程中执行，Qt 跨线程信号槽会自动保证这一点
+    QObject::connect(&w, &MainWindow::__start__, &audioCapture,   &AudioCapture::initialize);
+    QObject::connect(&w, &MainWindow::__start__, &recogniser,     &SpeechRecogniser::initialize);
+    QObject::connect(&w, &MainWindow::__start__, &translator,     &Translator::initialize);
+    QObject::connect(&w, &MainWindow::__start__, &oscBroadcaster, &SoloOscBroadcaster::initialize);
 
+    // 主窗口停止按钮 → 音频采集停止
+    QObject::connect(&w, &MainWindow::__stop__, &audioCapture, &AudioCapture::stop);
 
-    QObject::connect(&w, &MainWindow::__stop__,
-                     &audioCapture, &AudioCapture::stop);
-
-    // 启动子线程并初始化工作对象
+    // ─── 启动子线程 ────────────────────────────────────────────────────────
+    // 线程只负责提供事件循环，工作对象的初始化由 __start__ 信号触发
     recogniserThread.start();
     translatorThread.start();
     oscThread.start();
 
-    // 在工作线程中执行初始化（确保对象在正确线程中创建资源）
-    //QTimer::singleShot(0, &recogniser, &SpeechRecogniser::initialize);
-
+    // ─── 显示主窗口 ────────────────────────────────────────────────────────
     w.show();
 
-    // 程序退出时清理
+    // ─── 程序退出清理 ──────────────────────────────────────────────────────
     QObject::connect(&a, &QCoreApplication::aboutToQuit, [&]() {
+        // 通知各线程退出事件循环
         recogniserThread.quit();
         translatorThread.quit();
         oscThread.quit();
+        // 等待线程完全退出（避免析构时仍有后台操作）
         recogniserThread.wait();
         translatorThread.wait();
         oscThread.wait();

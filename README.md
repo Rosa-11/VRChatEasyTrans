@@ -139,16 +139,13 @@ sequenceDiagram
     SpeechRecogniser->>AudioCapture: recognitionCompleted
 ```
 
-计划实现的功能（优先级由高到低）
-
-1. 可配置的接入除中英文以外其他语言的语音识别API的方案
-2. 讯飞星火和 Deepseek 的websocket连接复用（两次调用之间加心跳包维持连接）
-3. 接入可识别中文方言的API
+TODO: 翻译前的文本和翻译后的文本同时显示在OSC
 
 
 # 🤝 参与贡献
 
 本项目欢迎各种形式的贡献！
+如果您编写了使用其他大模型的API接口的语音识别或翻译模块，欢迎PR~
 本人是学生平时比较忙，如果开启 pull request 很久没有合并或评论可以发送邮件至1375803462@qq.com提醒
 
 

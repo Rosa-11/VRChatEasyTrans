@@ -7,138 +7,176 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QUrl>
-#include <QEventLoop>
-#include <QTimer>
 
 namespace {
-const QString API_URL = "https://api.deepseek.com/v1/chat/completions";
-const int REQUEST_TIMEOUT_MS = 30000;
+const QString API_URL           = "https://api.deepseek.com/v1/chat/completions";
+const int     REQUEST_TIMEOUT_MS = 30000;  // 请求超时时间（毫秒）
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 构造函数
+// ─────────────────────────────────────────────────────────────────────────────
 Translator::Translator(QObject *parent)
     : QObject(parent)
     , m_networkManager(new QNetworkAccessManager(this))
 {
+    // 将网络请求完成信号连接到处理槽
     connect(m_networkManager, &QNetworkAccessManager::finished,
             this, &Translator::onReplyFinished);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// initialize() — 从 ConfigManager 加载目标语言和 API Key
+// 由主窗口 __start__ 信号触发
+// ─────────────────────────────────────────────────────────────────────────────
 void Translator::initialize()
 {
-    qDebug() << "Translator initialize";
     targetLanguage = ConfigManager::getInstance().getTargetLanguage();
-    apiKey = ConfigManager::getInstance().getDeepseekApiKey();
+    apiKey         = ConfigManager::getInstance().getDeepseekApiKey();
+    emit debug(QString("Translator initialized, target language: %1").arg(targetLanguage));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// translateTextAsync() — 发起异步翻译请求
+// ─────────────────────────────────────────────────────────────────────────────
 void Translator::translateTextAsync(const QString& text)
 {
     if (text.isEmpty()) {
-        emit translationError("Text is empty");
+        emit translationError("Translator: text is empty");
+        return;
+    }
+    if (apiKey.isEmpty()) {
+        emit translationError("Translator: DeepSeek API key not configured");
         return;
     }
 
-    if (apiKey.isEmpty()) {
-        emit translationError("API Key not configured");
-        return;
+    // 如果上一个请求还没完成，先中止它，避免 m_pendingReply 悬挂。
+    // 例如：用户说话非常快，前一句话的翻译还没返回，下一句已经来了。
+    if (m_pendingReply) {
+        m_pendingReply->abort();   // 触发 finished 信号，onReplyFinished 里会处理
+        m_pendingReply = nullptr;
     }
+
+    m_originalText = text;          // 保存原文用于后面组合输出
 
     QNetworkRequest request;
     request.setUrl(QUrl(API_URL));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    request.setRawHeader("Authorization", QString("Bearer %1").arg(apiKey).toUtf8());
+    request.setRawHeader("Authorization",
+                         QString("Bearer %1").arg(apiKey).toUtf8());
 
-    const QString requestJson = buildRequestJson(text, targetLanguage);
+    const QByteArray body = buildRequestJson(text, targetLanguage).toUtf8();
 
-    m_asyncMode = true;
-    m_networkManager->post(request, requestJson.toUtf8());
+    // 保存 reply 指针，用于后续识别回调归属
+    m_pendingReply = m_networkManager->post(request, body);
 }
 
-QString Translator::buildRequestJson(const QString& text, const QString& targetLanguage) const
+// ─────────────────────────────────────────────────────────────────────────────
+// buildRequestJson() — 构造发往 DeepSeek API 的 JSON 请求体
+// ─────────────────────────────────────────────────────────────────────────────
+QString Translator::buildRequestJson(const QString& text, const QString& targetLang) const
 {
-    QJsonObject systemMessage;
-    systemMessage["role"] = "system";
-    systemMessage["content"] = QString("你是一个专业的翻译助手。请将用户输入的内容翻译成%1，"
-                                       "只返回翻译结果，不要添加任何解释或额外内容。")
-                                   .arg(targetLanguage);
+    // 【修复】原代码在函数内部构建了两套 messages，最终使用的那套
+    // system content 是 QString("...").arg(targetLanguage)，
+    // 其中 "..." 是字面量而非真正的提示词，导致 DeepSeek 收到的系统提示完全无效。
+    // 现在只构建一套，且提示词内容完整。
 
-    QJsonObject userMessage;
-    userMessage["role"] = "user";
-    userMessage["content"] = text;
+    // 系统提示：告诉 DeepSeek 它的角色和输出格式
+    const QString systemContent = QString(
+                                      "你是一个专业的翻译助手。"
+                                      "请将用户输入的内容翻译成%1，"
+                                      "只返回翻译结果，不要添加任何解释、标注或额外内容。"
+                                      ).arg(targetLang);
 
-    QJsonArray messagesArray;
-    messagesArray.append(systemMessage);
-    messagesArray.append(userMessage);
+    // 构造 messages 数组
+    QJsonArray messages;
+    messages.append(QJsonObject{
+        {"role",    "system"},
+        {"content", systemContent}
+    });
+    messages.append(QJsonObject{
+        {"role",    "user"},
+        {"content", text}
+    });
 
+    // 构造完整请求体
     QJsonObject requestObj{
-        {"model", "deepseek-chat"},
-        {"messages", QJsonArray{
-            QJsonObject{
-                {"role", "system"},
-                {"content", QString("...").arg(targetLanguage)}
-            },
-            QJsonObject{
-                {"role", "user"},
-                {"content", text}
-            }
-        }},
-        {"temperature", 0.3},
-        {"max_tokens", 2000},
-        {"stream", false}
+        {"model",       "deepseek-chat"},
+        {"messages",    messages},         // 使用上面构造的 messages，不重复定义
+        {"temperature", 0.3},              // 较低的温度，翻译结果更稳定
+        {"max_tokens",  2000},
+        {"stream",      false}
     };
 
     return QJsonDocument(requestObj).toJson(QJsonDocument::Compact);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// parseTranslationResponse() — 从 API 返回的 JSON 中提取翻译文本
+// ─────────────────────────────────────────────────────────────────────────────
 QString Translator::parseTranslationResponse(const QByteArray& responseData) const
 {
-    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    const QJsonDocument doc = QJsonDocument::fromJson(responseData);
     if (doc.isNull()) {
-        return "Error: Invalid JSON response";
+        return "Error: invalid JSON response";
     }
 
     const QJsonObject rootObj = doc.object();
 
-    // 检查 API 返回的错误
+    // 检查 API 层面的错误（如 key 无效、余额不足等）
     if (rootObj.contains("error")) {
-        const QJsonObject errorObj = rootObj["error"].toObject();
-        const QString errorMessage = errorObj["message"].toString("Unknown error");
-        return QString("API Error: %1").arg(errorMessage);
+        const QString errMsg = rootObj["error"].toObject()["message"].toString("unknown error");
+        return QString("API Error: %1").arg(errMsg);
     }
 
-    // 提取翻译内容
+    // 提取 choices[0].message.content
     const QJsonArray choices = rootObj["choices"].toArray();
     if (!choices.isEmpty()) {
-        const QJsonObject choice = choices.first().toObject();
-        const QJsonObject message = choice["message"].toObject();
-        const QString content = message["content"].toString().trimmed();
-        if (!content.isEmpty()) {
-            return content;
-        }
+        const QString content = choices.first().toObject()
+        ["message"].toObject()
+            ["content"].toString().trimmed();
+        if (!content.isEmpty()) return content;
     }
 
-    return "Error: No translation result found";
+    return "Error: no translation result found";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// onReplyFinished() — 网络请求完成回调
+// ─────────────────────────────────────────────────────────────────────────────
 void Translator::onReplyFinished(QNetworkReply* reply)
 {
+    // 延迟删除 reply 对象（Qt 要求在槽函数里不能直接 delete sender 相关对象）
     reply->deleteLater();
 
-    if (!m_asyncMode) {
+    if (reply != m_pendingReply) {
         return;
     }
-    m_asyncMode = false;
+    // 清空 pendingReply，允许下一次请求
+    m_pendingReply = nullptr;
 
+    // 处理网络层错误（连接超时、abort 等）
     if (reply->error() != QNetworkReply::NoError) {
-        emit translationError(QString("Network error: %1").arg(reply->errorString()));
+        // 用户主动 abort 的请求不需要报错
+        if (reply->error() != QNetworkReply::OperationCanceledError) {
+            emit translationError(QString("Translator: network error: %1")
+                                      .arg(reply->errorString()));
+        }
         return;
     }
 
-    const QByteArray responseData = reply->readAll();
-    const QString translatedText = parseTranslationResponse(responseData);
+    // 解析 API 响应
+    const QByteArray responseData  = reply->readAll();
+    const QString    translatedText = parseTranslationResponse(responseData);
 
-    if (translatedText.startsWith("Error:")) {
+    if (translatedText.startsWith("Error:") || translatedText.startsWith("API Error:")) {
         emit translationError(translatedText);
     } else {
-        emit translationFinished(translatedText);   ///////////////
+        // 组合原文和译文
+        const QString result = m_originalText + "\n" + translatedText;
+
+        emit translationFinished(result);  // 发送组合后的字符串
+
+        emit debug(QString("翻译结果: %1").arg(translatedText)); // debug
     }
 }

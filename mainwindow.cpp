@@ -48,11 +48,11 @@ void MainWindow::on_launchButton_clicked()
         config.loadManagerToFile();         // 将管理类里面的配置写入配置文件（注意！要先更新配置再启动）
         is_running = true;
 
-        emit __start__();                   // 启动  （注意！要先更新配置再启动）
-
         ui->launchButton->setText("停止");
         ui->debug->clear();
         ui->debug->append("程序启动\n正在使用设备"+config.getDevice());
+
+        emit __start__();                   // 启动  （注意！要先更新配置再启动）
     }
 }
 

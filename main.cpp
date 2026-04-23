@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
     MainWindow w;
 
     // ─── 工作对象创建 ──────────────────────────────────────────────────────
-    // AudioCapture 留在主线程（QAudioSource 在主线程中最稳定）
+    // AudioCapture 留在主线程
     AudioCapture audioCapture;
 
     // SpeechRecogniser 独立线程：WebSocket 收发不阻塞主线程
@@ -45,13 +45,10 @@ int main(int argc, char *argv[])
     Translator translator;
     translator.moveToThread(&translatorThread);
 
-    // OscBroadcaster 独立线程：UDP 发送不阻塞翻译线程
-    QThread oscThread;
+    // OSC基于UDP协议，不阻塞线程，可以放进Translator线程
+    // QThread oscThread;
     SoloOscBroadcaster oscBroadcaster;
-    // 【修复】原代码写的是 moveToThread(&translatorThread)，
-    // 导致 oscThread 是个空线程（没有任何对象在上面运行），
-    // 且 oscBroadcaster 和 translator 共用同一个线程，UDP 发送会阻塞翻译。
-    oscBroadcaster.moveToThread(&oscThread);
+    oscBroadcaster.moveToThread(&translatorThread);
 
     // ─── 信号与槽连接 ──────────────────────────────────────────────────────
 
@@ -82,7 +79,6 @@ int main(int argc, char *argv[])
     QObject::connect(&translator,   &Translator::debug,    &w, &MainWindow::onDebug);
 
     // 主窗口启动按钮 → 各模块初始化
-    // 注意：initialize() 必须在各自所在线程中执行，Qt 跨线程信号槽会自动保证这一点
     QObject::connect(&w, &MainWindow::__start__, &audioCapture,   &AudioCapture::initialize);
     QObject::connect(&w, &MainWindow::__start__, &recogniser,     &SpeechRecogniser::initialize);
     QObject::connect(&w, &MainWindow::__start__, &translator,     &Translator::initialize);
@@ -95,7 +91,7 @@ int main(int argc, char *argv[])
     // 线程只负责提供事件循环，工作对象的初始化由 __start__ 信号触发
     recogniserThread.start();
     translatorThread.start();
-    oscThread.start();
+    // oscThread.start();
 
     // ─── 显示主窗口 ────────────────────────────────────────────────────────
     w.show();
@@ -105,11 +101,11 @@ int main(int argc, char *argv[])
         // 通知各线程退出事件循环
         recogniserThread.quit();
         translatorThread.quit();
-        oscThread.quit();
+        // oscThread.quit();
         // 等待线程完全退出（避免析构时仍有后台操作）
         recogniserThread.wait();
         translatorThread.wait();
-        oscThread.wait();
+        // oscThread.wait();
     });
 
     return a.exec();

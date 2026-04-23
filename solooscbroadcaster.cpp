@@ -1,12 +1,10 @@
 #include "solooscbroadcaster.h"
-#include <QDebug>
 #include <QUdpSocket>
 #include "ConfigManager.h"
 
 SoloOscBroadcaster::SoloOscBroadcaster() {}
 
 void SoloOscBroadcaster::initialize(){
-    qDebug() << "OSC initialize";
     ConfigManager& config = ConfigManager::getInstance();
     targetHost = QHostAddress(config.getTargetHost());
     targetPort = (quint16)config.getTargetPort();

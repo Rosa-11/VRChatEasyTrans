@@ -176,9 +176,11 @@ void AudioCapture::processFrame(const QByteArray &frame)
 
     // ── Recording：持续发送阶段 ──────────────────────────────────────────────
     case RecordingState::Recording:
+
+        emit sendAudioChunk(frame);
+        
         if (hasVoice) {
             m_silenceFrameCount = 0;
-            emit sendAudioChunk(frame);
         } else {
             m_silenceFrameCount++;
             if (m_silenceFrameCount >= m_maxSilenceFrames) {

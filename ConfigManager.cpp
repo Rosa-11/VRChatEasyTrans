@@ -21,7 +21,6 @@ ConfigManager& ConfigManager::getInstance() {
     return instance;
 }
 
-// ===================== 读配置文件（自动加锁） =====================
 void ConfigManager::loadFileToManager() {
     QMutexLocker locker(&m_globalMutex);
 
@@ -41,7 +40,6 @@ void ConfigManager::loadFileToManager() {
     m_device             = settings.value("device", "").toString();
 }
 
-// ===================== 写配置文件（自动加锁） =====================
 void ConfigManager::loadManagerToFile() {
     QMutexLocker locker(&m_globalMutex);
 
@@ -62,7 +60,6 @@ void ConfigManager::loadManagerToFile() {
     settings.sync();
 }
 
-// ===================== 自动加锁 GET / SET =====================
 double ConfigManager::getVadThreshold() const {
     QMutexLocker locker(&m_globalMutex);
     return m_vadThreshold;

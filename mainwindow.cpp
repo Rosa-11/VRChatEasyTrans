@@ -2,8 +2,8 @@
 #include "./ui_mainwindow.h"
 #include <QMediaDevices>
 #include <QDebug>
-#include <QTimer> ///////////////
-#include <QDateTime>////////////
+#include <QTimer>
+#include <QDateTime>
 #include <QDir>
 
 #include <QUdpSocket>

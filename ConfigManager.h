@@ -39,7 +39,6 @@ public:
     void loadFileToManager();
     void loadManagerToFile();
 
-    // ===================== 自动加锁的安全 get/set =====================
     double getVadThreshold() const;
     void setVadThreshold(double value);
 
